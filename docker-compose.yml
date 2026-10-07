@@ -1,0 +1,91 @@
+services:
+  # ─── PostgreSQL Database ───────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: deepcare-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: deepcare_user
+      POSTGRES_PASSWORD: deepcare_pass
+      POSTGRES_DB: deepcare_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deepcare_user -d deepcare_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── LocalStack (Mock AWS for Offline/Local Testing) ───────────────────────
+  localstack:
+    image: localstack/localstack:latest
+    container_name: deepcare-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,cloudwatch,logs,ses
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./scripts/init_localstack.sh:/etc/localstack/init/ready.d/init_localstack.sh
+
+  # ─── FastAPI & AI ML Backend ──────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: deepcare-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=dev
+      - DATABASE_URL=postgresql://deepcare_user:deepcare_pass@postgres:5432/deepcare_db
+      - SECRET_KEY=deepcare-ultra-secure-jwt-key-2026-production-ready
+      - JWT_SECRET_KEY=deepcare-ultra-secure-jwt-key-2026-production-ready
+      - ADMIN_EMAIL=admin@deepcare.health
+      - ADMIN_PASSWORD=AdminPass123!
+      - S3_BUCKET_NAME=deepcare-medical-vault-dev
+      - AWS_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=mock_access_key
+      - AWS_SECRET_ACCESS_KEY=mock_secret_key
+      - ML_DEVICE=cpu
+    volumes:
+      - ./backend/app:/app/app
+      - ml_weights:/app/models
+
+  # ─── React Frontend ───────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: deepcare-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+  # ─── Nginx Reverse Proxy / Load Balancer ──────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: deepcare-gateway
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  postgres_data:
+  localstack_data:
+  ml_weights:
