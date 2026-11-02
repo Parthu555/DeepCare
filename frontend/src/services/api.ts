@@ -85,6 +85,15 @@ export const doctorAPI = {
   approveReport: (report_id: string, data: { is_patient_viewable: boolean }) =>
     api.post(`/doctors/reports/${report_id}/approve`, data),
   scheduleAppointment: (data: AppointmentCreate) => api.post('/doctors/appointments', data),
+  getStorageImages: () => api.get<StorageDatasetImage[]>('/doctors/storage/available-images'),
+  importFromStorage: (data: {
+    image_id: string;
+    patient_id: string;
+    view_position?: string;
+    clinical_indication?: string;
+    body_part?: string;
+  }) => api.post<any>('/doctors/xrays/import-from-storage', data),
+  getAllXrays: () => api.get<DoctorXrayScanItem[]>('/doctors/xrays/all'),
 };
 
 // ─────────────── Admin ───────────────
@@ -178,6 +187,7 @@ export interface AnalysisResult {
   top_prediction?: string;
   top_confidence?: number;
   gradcam_presigned_url?: string;
+  xray_presigned_url?: string;
   status: string;
   doctor_reviewed: boolean;
   doctor_review_notes?: string;
@@ -211,9 +221,115 @@ export interface ReportCreate {
   ai_analysis_included?: boolean;
 }
 
-export interface AppointmentCreate {
+export interface StorageDatasetImage {
+  image_id: string;
+  filename: string;
+  patient_id?: string;
+  finding: string;
+  view_position: string;
+  file_size_kb: number;
+  preview_url: string;
+}
+
+export interface DoctorXrayScanItem {
+  xray_id: string;
   patient_id: string;
+  patient_name: string;
+  body_part: string;
+  view_position: string;
+  analysis_status: string;
+  presigned_url?: string;
+  created_at: string;
+  clinical_indication?: string;
+}
+
+// ─────────────── Appointments & Pre-Booking ───────────────
+
+export interface AppointmentDoctor {
+  id: string;
+  doctor_id: string;
+  name: string;
+  first_name: string;
+  last_name: string;
+  specialization: string;
+  license_number: string;
+  consultation_types: string[];
+  available_time_slots: string[];
+}
+
+export interface AppointmentItem {
+  id: string;
+  appointment_id: string;
+  patient_id?: string;
+  doctor_id: string;
+  doctor_name: string;
+  doctor_specialization?: string;
+  patient_name?: string;
+  patient_email?: string;
+  patient_phone?: string;
+  patient_age?: number;
+  patient_gender?: string;
+  symptoms?: string;
+  consultation_type?: string;
+  time_slot?: string;
+  scheduled_at: string;
+  duration_minutes: number;
+  purpose?: string;
+  status: 'pending' | 'confirmed' | 'rescheduled' | 'cancelled' | 'completed' | 'scheduled' | 'rejected' | string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface AppointmentCreate {
+  patient_id?: string;
+  doctor_id: string;
   scheduled_at: string;
   duration_minutes?: number;
   purpose?: string;
+  patient_name?: string;
+  patient_email?: string;
+  patient_phone?: string;
+  patient_age?: number;
+  patient_gender?: string;
+  symptoms?: string;
+  consultation_type?: string;
+  time_slot?: string;
 }
+
+export const appointmentAPI = {
+  getDoctors: () => api.get<AppointmentDoctor[]>('/appointments/doctors'),
+  preBook: (data: AppointmentCreate) => api.post<AppointmentItem>('/appointments/pre-book', data),
+  getMyBookings: (params?: { email?: string; patient_id?: string; appointment_id?: string }) =>
+    api.get<AppointmentItem[]>('/appointments/my-bookings', { params }),
+  getById: (id: string) => api.get<AppointmentItem>(`/appointments/${id}`),
+  cancel: (id: string, reason?: string) =>
+    api.patch<AppointmentItem>(`/appointments/${id}/cancel`, null, { params: { reason } }),
+  reschedule: (id: string, data: { scheduled_at: string; time_slot?: string; reason?: string }) =>
+    api.patch<AppointmentItem>(`/appointments/${id}/reschedule`, data),
+  getDoctorAppointments: (status_filter?: string) =>
+    api.get<AppointmentItem[]>('/appointments/doctor/me', { params: { status_filter } }),
+  updateDoctorStatus: (
+    id: string,
+    data: { status: string; notes?: string; scheduled_at?: string; time_slot?: string }
+  ) => api.patch<AppointmentItem>(`/appointments/doctor/${id}/status`, data),
+  getAdminAppointments: (params?: {
+    status_filter?: string;
+    doctor_id?: string;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }) => api.get<{ items: AppointmentItem[]; total: number; page: number; page_size: number }>('/appointments/admin/all', { params }),
+  getAdminStats: () =>
+    api.get<{
+      total_bookings: number;
+      pending_requests: number;
+      confirmed_appointments: number;
+      rescheduled_appointments: number;
+      cancelled_appointments: number;
+      completed_appointments: number;
+      today_appointments: number;
+    }>('/appointments/admin/stats'),
+  adminUpdate: (id: string, data: { status?: string; notes?: string; scheduled_at?: string; time_slot?: string }) =>
+    api.patch<AppointmentItem>(`/appointments/admin/${id}`, data),
+};
+

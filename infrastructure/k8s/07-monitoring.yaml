@@ -1,0 +1,190 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deepcare-prometheus-config
+  namespace: deepcare
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 10s
+      evaluation_interval: 10s
+
+    rule_files:
+      - /etc/prometheus/alert.rules.yml
+
+    scrape_configs:
+      - job_name: "deepcare-backend"
+        metrics_path: "/metrics"
+        static_configs:
+          - targets: ["deepcare-backend:8000"]
+            labels:
+              app: "deepcare"
+              tier: "backend"
+
+      - job_name: "prometheus"
+        static_configs:
+          - targets: ["localhost:9090"]
+
+  alert.rules.yml: |
+    groups:
+      - name: deepcare_k8s_alerts
+        rules:
+          - alert: DeepCareBackendDown
+            expr: up{job="deepcare-backend"} == 0
+            for: 30s
+            labels:
+              severity: critical
+            annotations:
+              summary: "DeepCare API backend pod unreachable in cluster"
+          - alert: HighAIInferenceLatency
+            expr: histogram_quantile(0.95, sum(rate(deepcare_ai_inference_duration_seconds_bucket[5m])) by (le)) > 2.5
+            for: 1m
+            labels:
+              severity: warning
+            annotations:
+              summary: "p95 AI inference latency exceeds 2.5s"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepcare-prometheus
+  namespace: deepcare
+  labels:
+    app: deepcare-prometheus
+    tier: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deepcare-prometheus
+  template:
+    metadata:
+      labels:
+        app: deepcare-prometheus
+        tier: monitoring
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.51.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+          ports:
+            - containerPort: 9090
+              name: http
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          volumeMounts:
+            - name: prometheus-config-volume
+              mountPath: /etc/prometheus
+      volumes:
+        - name: prometheus-config-volume
+          configMap:
+            name: deepcare-prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepcare-prometheus
+  namespace: deepcare
+  labels:
+    app: deepcare-prometheus
+    tier: monitoring
+spec:
+  type: NodePort
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: 30090
+      name: http
+  selector:
+    app: deepcare-prometheus
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deepcare-grafana-datasources
+  namespace: deepcare
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://deepcare-prometheus:9090
+        isDefault: true
+        editable: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepcare-grafana
+  namespace: deepcare
+  labels:
+    app: deepcare-grafana
+    tier: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deepcare-grafana
+  template:
+    metadata:
+      labels:
+        app: deepcare-grafana
+        tier: monitoring
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.4.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: "admin"
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "admin"
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          volumeMounts:
+            - name: grafana-datasources-volume
+              mountPath: /etc/grafana/provisioning/datasources
+      volumes:
+        - name: grafana-datasources-volume
+          configMap:
+            name: deepcare-grafana-datasources
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepcare-grafana
+  namespace: deepcare
+  labels:
+    app: deepcare-grafana
+    tier: monitoring
+spec:
+  type: NodePort
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30030
+      name: http
+  selector:
+    app: deepcare-grafana
+

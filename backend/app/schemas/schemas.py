@@ -228,6 +228,7 @@ class XrayResponse(BaseModel):
     view_position: Optional[str] = None
     clinical_indication: Optional[str] = None
     analysis_status: str
+    presigned_url: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -262,6 +263,7 @@ class AnalysisResponse(BaseModel):
     top_prediction: Optional[str] = None
     top_confidence: Optional[float] = None
     gradcam_presigned_url: Optional[str] = None
+    xray_presigned_url: Optional[str] = None
     status: str
     inference_duration_ms: Optional[float] = None
     doctor_reviewed: bool
@@ -349,21 +351,55 @@ class ConsultationResponse(BaseModel):
 # ─────────────────────────────── Appointment ─────────────────────────────────
 
 class AppointmentCreate(BaseModel):
-    patient_id: str
+    patient_id: Optional[str] = None
+    doctor_id: str
     scheduled_at: datetime
     duration_minutes: int = 30
     purpose: Optional[str] = None
+    # Pre-booking attributes
+    patient_name: Optional[str] = None
+    patient_email: Optional[str] = None
+    patient_phone: Optional[str] = None
+    patient_age: Optional[int] = None
+    patient_gender: Optional[str] = None
+    symptoms: Optional[str] = None
+    consultation_type: Optional[str] = "in_person"
+    time_slot: Optional[str] = None
+
+
+class AppointmentStatusUpdate(BaseModel):
+    status: str  # "confirmed", "rejected", "rescheduled", "cancelled", "completed"
+    notes: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+    time_slot: Optional[str] = None
+
+
+class AppointmentReschedule(BaseModel):
+    scheduled_at: datetime
+    time_slot: Optional[str] = None
+    reason: Optional[str] = None
 
 
 class AppointmentResponse(BaseModel):
     id: str
     appointment_id: str
-    patient_id: str
+    patient_id: Optional[str] = None
     doctor_id: str
+    doctor_name: Optional[str] = None
+    doctor_specialization: Optional[str] = None
+    patient_name: Optional[str] = None
+    patient_email: Optional[str] = None
+    patient_phone: Optional[str] = None
+    patient_age: Optional[int] = None
+    patient_gender: Optional[str] = None
+    symptoms: Optional[str] = None
+    consultation_type: Optional[str] = "in_person"
+    time_slot: Optional[str] = None
     scheduled_at: datetime
-    duration_minutes: int
+    duration_minutes: int = 30
     purpose: Optional[str] = None
     status: str
+    notes: Optional[str] = None
     created_at: datetime
 
     class Config:

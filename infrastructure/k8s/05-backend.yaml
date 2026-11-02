@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepcare-backend
+  namespace: deepcare
+  labels:
+    app: deepcare-backend
+    tier: api-and-ml
+    app.kubernetes.io/name: deepcare-backend
+    app.kubernetes.io/part-of: deepcare
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: deepcare-backend
+  template:
+    metadata:
+      labels:
+        app: deepcare-backend
+        tier: api-and-ml
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+        - name: backend
+          image: deepcare-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: deepcare-config
+            - secretRef:
+                name: deepcare-secrets
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 2
+          volumeMounts:
+            - name: storage-volume
+              mountPath: /app/storage
+      volumes:
+        - name: storage-volume
+          persistentVolumeClaim:
+            claimName: deepcare-storage-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepcare-backend
+  namespace: deepcare
+  labels:
+    app: deepcare-backend
+    tier: api-and-ml
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  selector:
+    app: deepcare-backend
+

@@ -12,17 +12,22 @@ import PatientReports from './pages/patient/PatientReports';
 import PatientAppointments from './pages/patient/PatientAppointments';
 import PatientProfilePage from './pages/patient/PatientProfile';
 
+// Public Pre-Booking
+import BookAppointment from './pages/public/BookAppointment';
+
 // Doctor Pages
 import DoctorDashboard from './pages/doctor/DoctorDashboard';
 import DoctorPatientSearch from './pages/doctor/DoctorPatientSearch';
 import DoctorUploadXray from './pages/doctor/DoctorUploadXray';
 import DoctorAnalysisWorkspace from './pages/doctor/DoctorAnalysisWorkspace';
 import DoctorConsultations from './pages/doctor/DoctorConsultations';
+import DoctorAppointments from './pages/doctor/DoctorAppointments';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminDoctorApproval from './pages/admin/AdminDoctorApproval';
 import AdminPatients from './pages/admin/AdminPatients';
+import AdminAppointments from './pages/admin/AdminAppointments';
 import AdminAuditLogs from './pages/admin/AdminAuditLogs';
 import AdminAnalytics from './pages/admin/AdminAnalytics';
 
@@ -56,8 +61,9 @@ const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public Auth */}
+        {/* Public Auth & Pre-Booking */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/book-appointment" element={<BookAppointment />} />
 
         {/* Patient Routes */}
         <Route
@@ -178,7 +184,7 @@ const App: React.FC = () => {
           path="/doctor/appointments"
           element={
             <ProtectedRoute allowedRoles={['doctor']}>
-              <PatientAppointments />
+              <DoctorAppointments />
             </ProtectedRoute>
           }
         />
@@ -197,6 +203,14 @@ const App: React.FC = () => {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/appointments"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminAppointments />
             </ProtectedRoute>
           }
         />

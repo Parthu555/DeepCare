@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { doctorAPI, AnalysisResult, ReportCreate } from '../../services/api';
+import { doctorAPI, AnalysisResult, ReportCreate, DoctorXrayScanItem } from '../../services/api';
 import {
   Activity, Sparkles, Brain, CheckCircle2, AlertTriangle,
-  FileText, Download, Sliders, Eye, RefreshCw, Check, Clock
+  FileText, Download, Sliders, Eye, RefreshCw, Check, Clock,
+  Database, Image as ImageIcon, ArrowRight, PlusCircle, Search
 } from 'lucide-react';
 
 const DoctorAnalysisWorkspace: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const passedXrayId = (location.state as any)?.xrayId || '';
 
   const [xrayId, setXrayId] = useState(passedXrayId);
@@ -20,9 +22,19 @@ const DoctorAnalysisWorkspace: React.FC = () => {
   const [heatmapOpacity, setHeatmapOpacity] = useState(0.5);
   const [displayMode, setDisplayMode] = useState<'side-by-side' | 'blend' | 'gradcam-only'>('blend');
 
+  // Available scans list for quick selection with ID
+  const [availableScans, setAvailableScans] = useState<DoctorXrayScanItem[]>([]);
+  const [loadingScans, setLoadingScans] = useState(false);
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [scanFilterQuery, setScanFilterQuery] = useState('');
+
   // Report generation state
   const [generatingReport, setGeneratingReport] = useState(false);
   const [reportCreated, setReportCreated] = useState<any | null>(null);
+
+  useEffect(() => {
+    fetchAvailableScans();
+  }, []);
 
   useEffect(() => {
     if (passedXrayId) {
@@ -30,10 +42,22 @@ const DoctorAnalysisWorkspace: React.FC = () => {
     }
   }, [passedXrayId]);
 
+  const fetchAvailableScans = async () => {
+    try {
+      setLoadingScans(true);
+      const res = await doctorAPI.getAllXrays();
+      setAvailableScans(res.data);
+    } catch (err: any) {
+      console.error('Failed to load doctor xrays:', err);
+    } finally {
+      setLoadingScans(false);
+    }
+  };
+
   const handleRunInference = async (idToAnalyze?: string) => {
     const id = idToAnalyze || xrayId;
     if (!id.trim()) {
-      alert('Please enter or select an X-Ray ID to analyze.');
+      alert('Please enter a Patient ID (e.g. PAT-2026-0001) or Scan ID to analyze.');
       return;
     }
 
@@ -43,15 +67,30 @@ const DoctorAnalysisWorkspace: React.FC = () => {
       setReportCreated(null);
       const res = await doctorAPI.requestAnalysis(id.trim());
       setAnalysis(res.data);
+      if (res.data?.xray_id) {
+        setXrayId(res.data.xray_id);
+      }
       if (res.data?.doctor_review_notes) {
         setDoctorNotes(res.data.doctor_review_notes);
       }
+      fetchAvailableScans();
     } catch (err: any) {
       console.error('Inference error:', err);
+      if (err?.response?.status === 401) {
+        alert('Your session has expired. Redirecting to login page...');
+        navigate('/login');
+        return;
+      }
       alert(err?.response?.data?.detail || 'Failed to execute deep learning inference.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSelectAndAnalyze = (selectedId: string) => {
+    setXrayId(selectedId);
+    setShowScanModal(false);
+    handleRunInference(selectedId);
   };
 
   const handleSaveReview = async () => {
@@ -84,7 +123,7 @@ const DoctorAnalysisWorkspace: React.FC = () => {
         xray_id: analysis.xray_id,
         analysis_id: analysis.analysis_id || analysis.id,
         title: `Chest Radiograph AI Evaluation — ${topCondition}`,
-        report_type: 'Radiology AI Evaluation',
+        report_type: 'radiology',
         summary: `Automated DenseNet-121 model flagged elevated risk for ${topCondition} with ${conf}% confidence. Verified by attending physician.`,
         clinical_findings: doctorNotes || `Consolidation/infiltrate observed consistent with AI Grad-CAM localization in thoracic region. Top prediction: ${topCondition} (${conf}%).`,
         recommendations: 'Initiate appropriate clinical therapy protocol. Follow-up chest radiograph in 14 days to track resolution.',
@@ -101,12 +140,22 @@ const DoctorAnalysisWorkspace: React.FC = () => {
     }
   };
 
+  const filteredScans = availableScans.filter((s) => {
+    const q = scanFilterQuery.toLowerCase();
+    return (
+      s.xray_id.toLowerCase().includes(q) ||
+      (s.patient_id && s.patient_id.toLowerCase().includes(q)) ||
+      (s.patient_name && s.patient_name.toLowerCase().includes(q)) ||
+      (s.clinical_indication && s.clinical_indication.toLowerCase().includes(q))
+    );
+  });
+
   return (
     <DashboardLayout title="Deep Learning X-Ray Studio">
       <div className="space-y-6">
-        {/* Top Control Bar */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 w-full md:w-auto">
+        {/* Top Control Bar with Quick Selection by ID */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3 w-full lg:w-auto">
             <div className="p-2.5 bg-teal-100 text-teal-700 rounded-xl">
               <Brain className="w-6 h-6" />
             </div>
@@ -116,27 +165,64 @@ const DoctorAnalysisWorkspace: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full md:w-auto">
+          {/* Quick Selection with ID Controls */}
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
+            {/* Quick Dropdown by ID */}
+            <div className="flex-1 sm:flex-initial">
+              <select
+                value={xrayId}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setXrayId(val);
+                  if (val) handleRunInference(val);
+                }}
+                className="w-full sm:w-72 px-3 py-2 text-xs font-mono font-semibold border border-teal-300 bg-teal-50/40 rounded-xl focus:border-teal-500 focus:bg-white focus:ring-1 focus:ring-teal-500 outline-none truncate"
+              >
+                <option value="">-- Quick Select Patient / Scan ID --</option>
+                {availableScans.map((s) => (
+                  <option key={s.xray_id} value={s.patient_id || s.xray_id}>
+                    {s.patient_id || 'PAT'} ({s.xray_id}) — {s.patient_name || 'Patient'} [{s.view_position}]
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Direct Input */}
             <input
               type="text"
-              placeholder="X-Ray Scan ID..."
+              placeholder="Enter Patient ID (e.g. PAT-2026-0001) or Scan ID..."
               value={xrayId}
               onChange={(e) => setXrayId(e.target.value)}
-              className="px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none font-mono flex-1 md:w-56"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleRunInference();
+              }}
+              className="px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none font-mono w-48 sm:w-64"
             />
+
+            {/* Run Inference Button */}
             <button
               onClick={() => handleRunInference()}
-              disabled={loading}
+              disabled={loading || !xrayId.trim()}
               className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-50 whitespace-nowrap"
             >
               <Sparkles className="w-3.5 h-3.5 text-teal-200" />
-              {loading ? 'Evaluating Model...' : 'Run Inference'}
+              {loading ? 'Evaluating...' : 'Run Inference'}
+            </button>
+
+            {/* Browse Storage Scans / Import New Scan button */}
+            <button
+              onClick={() => navigate('/doctor/xrays/upload')}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap"
+              title="Input another scan from storage or computer"
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-slate-500" />
+              Input Scan
             </button>
           </div>
         </div>
 
         {loading ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center space-y-4 shadow-sm">
             <div className="w-16 h-16 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
             <h3 className="text-lg font-bold text-slate-800">Running DenseNet-121 Deep Learning Model...</h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
@@ -144,12 +230,95 @@ const DoctorAnalysisWorkspace: React.FC = () => {
             </p>
           </div>
         ) : !analysis ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center max-w-md mx-auto">
-            <Activity className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <h3 className="text-base font-bold text-slate-800">No Active Analysis Loaded</h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Enter an X-Ray ID above or select a patient's scan from the Patient Directory to launch multi-label pathology classification.
-            </p>
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm space-y-6">
+            <div className="text-center max-w-lg mx-auto space-y-2">
+              <div className="w-12 h-12 bg-teal-50 text-teal-600 rounded-full flex items-center justify-center mx-auto">
+                <Database className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">Select a Chest Radiograph to Analyze</h3>
+              <p className="text-xs text-slate-500">
+                Choose any registered patient scan from storage below to immediately generate 14-condition AI pathology predictions and Grad-CAM localization heatmaps.
+              </p>
+            </div>
+
+            {/* Available registered scans grid for instant 1-click selection */}
+            <div>
+              <div className="flex items-center justify-between mb-3 text-xs text-slate-500">
+                <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                  Registered Scans in System ({availableScans.length})
+                </span>
+                <span className="text-teal-700 font-medium">Click any scan to launch AI inference</span>
+              </div>
+
+              {availableScans.length === 0 ? (
+                <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 text-xs text-slate-500">
+                  No scans currently registered in EHR.
+                  <button
+                    onClick={() => navigate('/doctor/xrays/upload')}
+                    className="mt-2 block mx-auto text-teal-600 font-bold hover:underline"
+                  >
+                    Select and ingest an image from the storage dataset vault &rarr;
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {availableScans.map((scan) => (
+                    <div
+                      key={scan.xray_id}
+                      onClick={() => handleSelectAndAnalyze(scan.xray_id)}
+                      className="group cursor-pointer bg-slate-900 rounded-xl border border-slate-800 hover:border-teal-500 transition-all overflow-hidden shadow-sm hover:shadow-md flex flex-col"
+                    >
+                      {/* Image Thumbnail */}
+                      <div className="aspect-[4/3] bg-black flex items-center justify-center relative overflow-hidden">
+                        {scan.presigned_url ? (
+                          <img
+                            src={scan.presigned_url}
+                            alt={scan.xray_id}
+                            className="max-h-full max-w-full object-contain filter grayscale group-hover:scale-105 transition-transform duration-200"
+                            loading="lazy"
+                            onError={(e: any) => {
+                              e.target.src = '/placeholder_xray.png';
+                            }}
+                          />
+                        ) : (
+                          <ImageIcon className="w-10 h-10 text-slate-700" />
+                        )}
+                        <span className="absolute top-2 left-2 bg-black/70 backdrop-blur-xs text-white text-[10px] font-mono px-2 py-0.5 rounded">
+                          {scan.xray_id}
+                        </span>
+                        <span className="absolute top-2 right-2 bg-teal-600/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                          {scan.view_position}
+                        </span>
+                      </div>
+
+                      {/* Card Body */}
+                      <div className="p-3 bg-white text-slate-800 flex-1 flex flex-col justify-between border-t border-slate-100">
+                        <div>
+                          <p className="font-bold text-xs text-slate-900 truncate">
+                            {scan.patient_name || scan.patient_id}
+                          </p>
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5" title={scan.clinical_indication}>
+                            {scan.clinical_indication || 'Frontal thoracic radiograph'}
+                          </p>
+                        </div>
+                        <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            scan.analysis_status === 'completed'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {scan.analysis_status}
+                          </span>
+                          <span className="text-teal-600 font-bold group-hover:underline flex items-center gap-1">
+                            Analyze <ArrowRight className="w-3 h-3" />
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
@@ -184,38 +353,49 @@ const DoctorAnalysisWorkspace: React.FC = () => {
                 <div className="mt-4 aspect-[4/3] bg-black rounded-xl overflow-hidden relative flex items-center justify-center border border-slate-800">
                   {displayMode === 'side-by-side' ? (
                     <div className="grid grid-cols-2 w-full h-full">
-                      <div className="relative border-r border-slate-800 p-1 flex items-center justify-center">
+                      <div className="relative border-r border-slate-800 p-1 flex items-center justify-center bg-black">
                         <img
-                          src={analysis.gradcam_presigned_url || '/placeholder_xray.png'}
-                          alt="Original X-ray"
-                          className="max-h-full max-w-full object-contain filter grayscale"
+                          src={analysis.xray_presigned_url || analysis.gradcam_presigned_url}
+                          alt="Original Input X-ray"
+                          className="max-h-full max-w-full object-contain filter grayscale contrast-125"
                         />
-                        <span className="absolute bottom-2 left-2 bg-black/60 px-2 py-0.5 rounded text-[10px] text-slate-300">
-                          Original
+                        <span className="absolute bottom-2 left-2 bg-black/70 backdrop-blur-xs px-2 py-0.5 rounded text-[10px] text-slate-200 border border-slate-700">
+                          Original Radiograph
                         </span>
                       </div>
-                      <div className="relative p-1 flex items-center justify-center">
+                      <div className="relative p-1 flex items-center justify-center bg-black">
                         <img
                           src={analysis.gradcam_presigned_url}
-                          alt="Grad-CAM"
+                          alt="Grad-CAM Activation"
                           className="max-h-full max-w-full object-contain"
                         />
-                        <span className="absolute bottom-2 left-2 bg-teal-900/80 px-2 py-0.5 rounded text-[10px] text-teal-300">
-                          Grad-CAM
+                        <span className="absolute bottom-2 left-2 bg-teal-950/80 backdrop-blur-xs px-2 py-0.5 rounded text-[10px] text-teal-300 border border-teal-800">
+                          Grad-CAM Heatmap
                         </span>
                       </div>
                     </div>
                   ) : displayMode === 'blend' ? (
-                    <div className="relative w-full h-full flex items-center justify-center">
+                    <div className="relative w-full h-full flex items-center justify-center bg-black">
+                      {/* Base layer: Original X-Ray */}
+                      {analysis.xray_presigned_url && (
+                        <img
+                          src={analysis.xray_presigned_url}
+                          alt="Original Radiograph Base"
+                          className="max-h-full max-w-full object-contain absolute inset-0 m-auto filter grayscale contrast-125"
+                        />
+                      )}
+                      {/* Top layer: GradCAM heatmap overlay with blend mode & variable opacity */}
                       <img
                         src={analysis.gradcam_presigned_url}
                         alt="Blended Radiograph Heatmap"
-                        className="max-h-full max-w-full object-contain transition-opacity"
-                        style={{ opacity: 0.6 + heatmapOpacity * 0.4 }}
+                        className={`max-h-full max-w-full object-contain absolute inset-0 m-auto transition-opacity ${
+                          analysis.xray_presigned_url ? 'mix-blend-screen' : ''
+                        }`}
+                        style={{ opacity: analysis.xray_presigned_url ? heatmapOpacity : 1.0 }}
                       />
                     </div>
                   ) : (
-                    <div className="relative w-full h-full flex items-center justify-center">
+                    <div className="relative w-full h-full flex items-center justify-center bg-black">
                       <img
                         src={analysis.gradcam_presigned_url}
                         alt="Grad-CAM Heatmap Only"

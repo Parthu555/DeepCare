@@ -195,7 +195,10 @@ class GradCAM:
         for name, module in self.model.named_modules():
             if name == layer_name:
                 module.register_forward_hook(self._save_activations)
-                module.register_backward_hook(self._save_gradients)
+                if hasattr(module, "register_full_backward_hook"):
+                    module.register_full_backward_hook(self._save_gradients)
+                else:
+                    module.register_backward_hook(self._save_gradients)
                 break
 
     def _save_activations(self, module, input, output):
@@ -355,8 +358,18 @@ def analyze_xray(
     duration_ms = (time.monotonic() - start_time) * 1000
     result["inference_duration_ms"] = duration_ms
 
-    # Emit CloudWatch metric
+    # Emit CloudWatch & Prometheus metrics
     record_inference_duration(duration_ms, settings.ML_MODEL_NAME)
+    try:
+        from app.core.metrics import record_ai_inference
+        record_ai_inference(
+            model=settings.ML_MODEL_NAME,
+            status=result["status"],
+            top_pathology=top_label,
+            duration_seconds=duration_ms / 1000.0,
+        )
+    except Exception as e:
+        logger.debug(f"Prometheus inference metric error: {e}")
 
     logger.info(
         f"X-ray analysis complete | analysis_id={analysis_id} | "

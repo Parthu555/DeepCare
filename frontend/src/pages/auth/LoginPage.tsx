@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { authAPI } from '../../services/api';
 import {
   Activity, Eye, EyeOff, HeartPulse, Lock, Mail,
-  AlertCircle, CheckCircle, User, Stethoscope, ChevronRight
+  AlertCircle, CheckCircle, User, Stethoscope, ChevronRight, Calendar
 } from 'lucide-react';
 
 type AuthMode = 'login' | 'register-patient' | 'register-doctor';
@@ -339,6 +339,15 @@ const LoginPage: React.FC = () => {
                     className="flex items-center justify-center gap-2 py-2.5 border border-teal-200 text-teal-700 rounded-xl hover:bg-teal-50 transition text-sm font-medium">
                     <Stethoscope className="w-4 h-4" /> Register as Doctor
                   </button>
+                </div>
+                <div className="pt-2">
+                  <Link
+                    to="/book-appointment"
+                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 text-teal-800 hover:from-teal-100 hover:to-cyan-100 transition text-sm font-semibold shadow-sm"
+                  >
+                    <Calendar className="w-4 h-4 text-teal-600" />
+                    <span>Need a Consultation? Pre-Book Appointment</span>
+                  </Link>
                 </div>
               </div>
             ) : (

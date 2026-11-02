@@ -92,7 +92,7 @@ def get_my_xrays(
     for x in xrays:
         item = XrayResponse.model_validate(x)
         item.patient_id = p.patient_id  # Return human-readable patient_id
-        # Don't expose raw S3 key; generate presigned URL
+        item.presigned_url = generate_presigned_url(x.s3_key, 900)
         item.s3_key = "[secured]"
         items.append(item)
 
@@ -218,6 +218,7 @@ def get_my_appointments(
     """Get all appointments for the authenticated patient."""
     if current_user.role != "patient":
         raise HTTPException(403, "Only patients can access this endpoint")
+    from app.api.v1.endpoints.appointments import _serialize_appointment
     p = _get_patient_or_403(db, current_user.id)
     appointments = (
         db.query(Appointment)
@@ -225,7 +226,7 @@ def get_my_appointments(
         .order_by(Appointment.scheduled_at.desc())
         .all()
     )
-    return [AppointmentResponse.model_validate(a) for a in appointments]
+    return [_serialize_appointment(a, db) for a in appointments]
 
 
 @router.get("/me/notifications")

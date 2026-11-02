@@ -1,0 +1,52 @@
+groups:
+  - name: deepcare_clinical_alerts
+    rules:
+      - alert: DeepCareBackendDown
+        expr: up{job="deepcare-backend"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: deepcare-backend
+        annotations:
+          summary: "DeepCare API & ML backend instance is unreachable"
+          description: "Instance {{ $labels.instance }} has been down for over 30 seconds. Clinical operations may be interrupted."
+
+      - alert: HighAIInferenceLatency
+        expr: histogram_quantile(0.95, sum(rate(deepcare_ai_inference_duration_seconds_bucket[5m])) by (le)) > 2.5
+        for: 1m
+        labels:
+          severity: warning
+          service: deepcare-ai
+        annotations:
+          summary: "Elevated DenseNet-121 inference latency"
+          description: "95th percentile AI inference latency is {{ $value }}s, exceeding the 2.5s clinical decision support SLA."
+
+      - alert: HighHttpErrorRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100 > 5
+        for: 1m
+        labels:
+          severity: critical
+          service: deepcare-backend
+        annotations:
+          summary: "High HTTP 5xx error rate detected on DeepCare API"
+          description: "HTTP 5xx error rate is currently at {{ $value }}% (threshold: >5%)."
+
+      - alert: DatabaseConnectivityDegraded
+        expr: deepcare_database_up == 0
+        for: 15s
+        labels:
+          severity: critical
+          service: deepcare-postgres
+        annotations:
+          summary: "DeepCare PostgreSQL database connection failure"
+          description: "The DeepCare backend failed database ping check. Electronic health records are inaccessible."
+
+      - alert: ElevatedRequestRate
+        expr: sum(rate(http_requests_total[2m])) > 100
+        for: 1m
+        labels:
+          severity: info
+          service: deepcare-traffic
+        annotations:
+          summary: "Spike in API traffic"
+          description: "DeepCare API throughput has exceeded 100 requests per second."

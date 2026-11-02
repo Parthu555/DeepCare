@@ -1,0 +1,29 @@
+{
+  "dataset_name": "NIH ChestX-ray14 Clinical Diagnostic Imaging Vault",
+  "primary_source": "NIH Clinical Center ChestX-ray14 & Open Pulmonary Diagnostic Repository",
+  "official_nih_url": "https://nihcc.app.box.com/v/ChestXray-NIHCC",
+  "companion_repository": "https://github.com/ieee8023/covid-chestxray-dataset",
+  "citation": "Wang X, Peng Y, Lu L, Lu Z, Bagheri M, Summers RM. ChestX-ray8: Hospital-scale Chest X-ray Database and Benchmarks on Weakly-Supervised Classification and Localization of Common Thorax Diseases. IEEE CVPR 2017.",
+  "license": "NIH Public Access & Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)",
+  "intended_use": "Educational, Academic Research, and Clinical Decision Support Demonstration",
+  "deidentification_status": "Fully anonymized and de-identified per HIPAA Safe Harbor provisions",
+  "total_images": 119,
+  "pathology_classes": [
+    "Atelectasis",
+    "Cardiomegaly",
+    "Effusion",
+    "Infiltration",
+    "Mass",
+    "Nodule",
+    "Pneumonia",
+    "Pneumothorax",
+    "Consolidation",
+    "Edema",
+    "Emphysema",
+    "Fibrosis",
+    "Pleural_Thickening",
+    "Hernia"
+  ],
+  "acquired_at": "2026-11-01T12:29:43.929913+00:00",
+  "ordering": "sequential (00000001_000.png to 00000119_000.png / PAT-2026-0001 to PAT-2026-0119)"
+}

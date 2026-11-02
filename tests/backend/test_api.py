@@ -147,6 +147,30 @@ def test_health_check():
     assert "service" in data
 
 
+def test_kubernetes_probes():
+    """Verify Kubernetes liveness and readiness probes respond with 200."""
+    # Liveness probe
+    live_res = client.get("/health/live")
+    assert live_res.status_code == 200
+    assert live_res.json()["status"] == "alive"
+
+    # Readiness probe
+    ready_res = client.get("/health/ready")
+    assert ready_res.status_code == 200
+    assert ready_res.json()["status"] == "ready"
+
+
+def test_prometheus_metrics_endpoint():
+    """Verify Prometheus /metrics endpoint is exposed and exposes standard and custom metrics."""
+    res = client.get("/metrics")
+    assert res.status_code == 200
+    content = res.text
+    # Verify standard FastAPI instrumentator metrics
+    assert "http_requests_total" in content or "deepcare" in content or "python_info" in content
+    # Verify content type is openmetrics/prometheus text
+    assert "text/plain" in res.headers.get("content-type", "") or "text/" in res.headers.get("content-type", "")
+
+
 def test_root_endpoint():
     """Verify root endpoint provides API documentation paths."""
     response = client.get("/")

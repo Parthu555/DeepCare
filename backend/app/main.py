@@ -17,7 +17,7 @@ from slowapi.util import get_remote_address
 
 from app.core.config import settings
 from app.core.database import Base, engine
-from app.api.v1.endpoints import auth, patients, doctors, admin
+from app.api.v1.endpoints import auth, patients, doctors, admin, storage, appointments
 from app.services.cloudwatch_service import (
     create_cloudwatch_alarms,
     create_deepcare_dashboard,
@@ -71,6 +71,20 @@ async def lifespan(app: FastAPI):
 
     # Seed admin user if not present
     _seed_admin()
+
+    # Populate Prometheus user counts gauge
+    try:
+        from app.core.database import SessionLocal
+        from app.models.user import User
+        from app.core.metrics import ACTIVE_USERS_GAUGE
+        from sqlalchemy import func
+        _db = SessionLocal()
+        _counts = _db.query(User.role, func.count(User.id)).group_by(User.role).all()
+        for _role, _cnt in _counts:
+            ACTIVE_USERS_GAUGE.labels(role=_role).set(_cnt)
+        _db.close()
+    except Exception as _e:
+        logger.debug(f"User count gauge init error: {_e}")
 
     yield
     logger.info("DeepCare API shutting down.")
@@ -181,9 +195,31 @@ app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(patients.router, prefix=API_PREFIX)
 app.include_router(doctors.router, prefix=API_PREFIX)
 app.include_router(admin.router, prefix=API_PREFIX)
+app.include_router(storage.router, prefix=API_PREFIX)
+app.include_router(appointments.router, prefix=API_PREFIX)
 
 
-# ─────────────────────────────── Health Checks ───────────────────────────────
+# ─────────────────────────────── Prometheus Metrics & Kubernetes Probes ──────
+
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    from app.core.metrics import DATABASE_HEALTH_STATUS
+
+    instrumentator = Instrumentator(
+        should_group_status_codes=True,
+        should_ignore_untemplated=True,
+        should_instrument_requests_inprogress=True,
+        excluded_handlers=["/metrics", "/health", "/health/live", "/health/ready"],
+        inprogress_name="deepcare_requests_inprogress",
+        inprogress_labels=True,
+    )
+    instrumentator.instrument(app).expose(app, endpoint="/metrics", tags=["Monitoring"])
+    logger.info("Prometheus /metrics instrumentator successfully registered")
+except ImportError as e:
+    logger.warning(f"prometheus-fastapi-instrumentator not available: {e}")
+
+
+# ─────────────────────────────── Health & Kubernetes Probes ───────────────────
 
 @app.get("/health", tags=["Health"])
 def health_check():
@@ -194,6 +230,39 @@ def health_check():
         "version": settings.APP_VERSION,
         "environment": settings.APP_ENV,
     }
+
+
+@app.get("/health/live", tags=["Health"])
+def liveness_probe():
+    """Kubernetes Liveness probe: returns 200 if container process is responsive."""
+    return {"status": "alive", "service": "DeepCare API"}
+
+
+@app.get("/health/ready", tags=["Health"])
+def readiness_probe():
+    """Kubernetes Readiness probe: verifies DB connectivity before accepting traffic."""
+    from app.core.database import SessionLocal
+    from sqlalchemy import text
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        try:
+            from app.core.metrics import DATABASE_HEALTH_STATUS
+            DATABASE_HEALTH_STATUS.set(1)
+        except Exception:
+            pass
+        return {"status": "ready", "database": "connected"}
+    except Exception as e:
+        try:
+            from app.core.metrics import DATABASE_HEALTH_STATUS
+            DATABASE_HEALTH_STATUS.set(0)
+        except Exception:
+            pass
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "error": f"Database unavailable: {str(e)}"},
+        )
 
 
 @app.get("/health/detailed", tags=["Health"])

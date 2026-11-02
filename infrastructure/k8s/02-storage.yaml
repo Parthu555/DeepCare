@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: deepcare-postgres-pvc
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-postgres
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: deepcare-storage-pvc
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+

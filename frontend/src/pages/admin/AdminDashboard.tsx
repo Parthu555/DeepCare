@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { adminAPI } from '../../services/api';
+import { adminAPI, appointmentAPI } from '../../services/api';
 import {
   Users, Stethoscope, Image, FileText, Activity,
   CheckCircle, Clock, BarChart3, TrendingUp, Shield,
-  AlertTriangle
+  AlertTriangle, Calendar, ArrowRight
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -17,15 +18,18 @@ const COLORS = ['#0d9488', '#14b8a6', '#2dd4bf', '#5eead4', '#99f6e4'];
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<any>(null);
   const [pendingDoctors, setPendingDoctors] = useState<any[]>([]);
+  const [apptStats, setApptStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       adminAPI.getStats(),
       adminAPI.listDoctors(1, false),
-    ]).then(([statsRes, doctorRes]) => {
+      appointmentAPI.getAdminStats(),
+    ]).then(([statsRes, doctorRes, apptRes]) => {
       setStats(statsRes.data);
       setPendingDoctors(doctorRes.data?.items?.slice(0, 5) || []);
+      setApptStats(apptRes.data);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -51,12 +55,12 @@ const AdminDashboard: React.FC = () => {
   }
 
   const overviewData = [
-    { name: 'Patients', value: stats?.total_patients || 0, icon: <Users className="w-6 h-6 text-blue-500" />, color: 'bg-blue-50' },
-    { name: 'Doctors', value: stats?.total_doctors || 0, icon: <Stethoscope className="w-6 h-6 text-teal-500" />, color: 'bg-teal-50' },
+    { name: 'Total Patients', value: stats?.total_patients || 0, icon: <Users className="w-6 h-6 text-blue-500" />, color: 'bg-blue-50', href: '/admin/patients' },
+    { name: 'Doctors', value: stats?.total_doctors || 0, icon: <Stethoscope className="w-6 h-6 text-teal-500" />, color: 'bg-teal-50', href: '/admin/doctors' },
+    { name: 'Appointments', value: apptStats?.total_bookings || 0, icon: <Calendar className="w-6 h-6 text-indigo-500" />, color: 'bg-indigo-50', href: '/admin/appointments' },
+    { name: 'Pending Appts', value: apptStats?.pending_requests || 0, icon: <Clock className="w-6 h-6 text-amber-500" />, color: 'bg-amber-50', href: '/admin/appointments' },
     { name: 'X-Rays', value: stats?.total_xrays || 0, icon: <Image className="w-6 h-6 text-purple-500" />, color: 'bg-purple-50' },
-    { name: 'Reports', value: stats?.total_reports || 0, icon: <FileText className="w-6 h-6 text-emerald-500" />, color: 'bg-emerald-50' },
-    { name: 'AI Analyses', value: stats?.total_analyses || 0, icon: <Activity className="w-6 h-6 text-amber-500" />, color: 'bg-amber-50' },
-    { name: 'Consultations', value: stats?.total_consultations || 0, icon: <CheckCircle className="w-6 h-6 text-rose-500" />, color: 'bg-rose-50' },
+    { name: 'AI Analyses', value: stats?.total_analyses || 0, icon: <Activity className="w-6 h-6 text-emerald-500" />, color: 'bg-emerald-50' },
   ];
 
   const pieData = [
@@ -87,13 +91,22 @@ const AdminDashboard: React.FC = () => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        {overviewData.map((item) => (
-          <div key={item.name} className="stat-card">
-            <div className={`p-3 rounded-xl ${item.color} w-fit mb-3`}>{item.icon}</div>
-            <p className="text-3xl font-bold text-slate-800">{item.value}</p>
-            <p className="text-sm text-slate-500">{item.name}</p>
-          </div>
-        ))}
+        {overviewData.map((item) => {
+          const content = (
+            <div className={`stat-card transition ${item.href ? 'hover:shadow-md hover:border-slate-300 cursor-pointer' : ''}`}>
+              <div className={`p-3 rounded-xl ${item.color} w-fit mb-3`}>{item.icon}</div>
+              <p className="text-3xl font-bold text-slate-800">{item.value}</p>
+              <p className="text-sm text-slate-500">{item.name}</p>
+            </div>
+          );
+          return item.href ? (
+            <Link key={item.name} to={item.href}>
+              {content}
+            </Link>
+          ) : (
+            <div key={item.name}>{content}</div>
+          );
+        })}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6 mb-6">

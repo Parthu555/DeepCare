@@ -328,18 +328,32 @@ class Appointment(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
     appointment_id = Column(String(20), unique=True, nullable=False, index=True)
-    patient_id = Column(UUID(as_uuid=False), ForeignKey("patients.id"), nullable=False)
+    patient_id = Column(UUID(as_uuid=False), ForeignKey("patients.id"), nullable=True)
     doctor_id = Column(UUID(as_uuid=False), ForeignKey("doctors.id"), nullable=False)
     scheduled_at = Column(DateTime(timezone=True), nullable=False)
     duration_minutes = Column(Integer, default=30)
     purpose = Column(Text, nullable=True)
     status = Column(
-        Enum("scheduled", "confirmed", "completed", "cancelled", "no_show", name="appt_status_enum"),
-        default="scheduled"
+        Enum(
+            "scheduled", "confirmed", "completed", "cancelled", "no_show",
+            "pending", "rejected", "rescheduled",
+            name="appt_status_enum"
+        ),
+        default="pending"
     )
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    # Pre-booking and patient contact/symptom metadata
+    patient_name = Column(String(200), nullable=True)
+    patient_email = Column(String(200), nullable=True)
+    patient_phone = Column(String(50), nullable=True)
+    patient_age = Column(Integer, nullable=True)
+    patient_gender = Column(String(30), nullable=True)
+    symptoms = Column(Text, nullable=True)
+    consultation_type = Column(String(50), default="in_person")
+    time_slot = Column(String(50), nullable=True)
 
     patient = relationship("Patient", back_populates="appointments")
     doctor = relationship("Doctor", back_populates="appointments")
