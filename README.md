@@ -2,62 +2,124 @@
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109.0-009688.svg?style=flat&logo=fastapi)](https://fastapi.tiangolo.com)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.2.0-EE4C2C.svg?style=flat&logo=pytorch)](https://pytorch.org)
-[![AWS](https://img.shields.io/badge/AWS-EC2%20%7C%20S3%20%7C%20RDS%20%7C%20CloudWatch-FF9900.svg?style=flat&logo=amazon-aws)](https://aws.amazon.com)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.29+-326CE5.svg?style=flat&logo=kubernetes)](https://kubernetes.io)
+[![Jenkins](https://img.shields.io/badge/Jenkins-CI%2FCD-D24939.svg?style=flat&logo=jenkins)](https://www.jenkins.io)
+[![Prometheus](https://img.shields.io/badge/Prometheus-Monitoring-E6522C.svg?style=flat&logo=prometheus)](https://prometheus.io)
+[![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800.svg?style=flat&logo=grafana)](https://grafana.com)
 [![React](https://img.shields.io/badge/React-18.2-61DAFB.svg?style=flat&logo=react)](https://react.dev)
 [![Terraform](https://img.shields.io/badge/Terraform-1.5+-7B42BC.svg?style=flat&logo=terraform)](https://www.terraform.io)
 [![HIPAA Compliant](https://img.shields.io/badge/Security-HIPAA%20Compliant-10b981.svg?style=flat)](https://www.hhs.gov/hipaa)
 
-**DeepCare** is a production-grade, HIPAA-compliant cloud healthcare platform combining deep learning-powered chest radiograph pathology detection (DenseNet-121 with Grad-CAM heatmaps), electronic health records (EHR), certified doctor diagnostic workflows, and automated AWS cloud infrastructure.
+**DeepCare** is an enterprise-grade, HIPAA-compliant cloud-native healthcare platform combining deep learning-powered chest radiograph pathology detection (DenseNet-121 with Grad-CAM visual heatmaps), electronic health records (EHR), certified doctor diagnostic workflows, automated Jenkins CI/CD pipelines, Kubernetes container orchestration, and real-time Prometheus & Grafana observability.
 
 ---
 
 ## 🏛️ System Architecture
 
+DeepCare is engineered with a modular, highly available, cloud-native architecture supporting both local multi-container orchestration (Docker Compose) and production-grade Kubernetes cluster deployments with end-to-end automated CI/CD and metrics observability.
+
 ```mermaid
 flowchart TD
-    subgraph Client Tier
-        PatientWeb[Patient Portal - React 18 / Vite]
-        DoctorWeb[Doctor Radiology Studio - React 18 / Vite]
-        AdminWeb[Admin HIPAA Console - React 18 / Vite]
+    subgraph ClientTier["1. Clinical Presentation Tier"]
+        DoctorWeb["Doctor Diagnostic Studio\n(React 18 / Vite / Tailwind)"]
+        PatientWeb["Patient Health Portal\n(Appointments & Reports)"]
+        AdminWeb["Admin Governance Console\n(HIPAA Audit & Doctor Approval)"]
+        PublicWeb["Public Appointment Booking\n(Self-service Portal)"]
     end
 
-    subgraph AWS Cloud Infrastructure - Multi-AZ VPC
-        subgraph Public Subnets
-            ALB[AWS Application Load Balancer]
-            NAT[AWS NAT Gateway]
-        end
+    subgraph CICDTier["2. Automated DevOps CI/CD Pipeline (Jenkins)"]
+        GitRepo["Git Repository\n(GitHub / Webhook)"]
+        Jenkins["Jenkins Declarative Pipeline\n(7 Stages)"]
+        PytestStage["Pytest Backend & ML Tests"]
+        DockerBuild["Docker Multi-Stage Container Builds"]
+        SecAudit["Container Security & Vulnerability Scan"]
+        K8sDeploy["Kubernetes Continuous Rollout\n(kubectl apply -k k8s/)"]
+        SmokeTest["Liveness / Readiness Smoke Test"]
 
-        subgraph Private App Subnets
-            ASG[EC2 Auto Scaling Group - Ubuntu 22.04]
-            subgraph Docker Container Stack
-                FastAPI[FastAPI Backend :8000]
-                ML[PyTorch DenseNet-121 Engine]
-                GradCAM[Grad-CAM Heatmap Generator]
+        GitRepo --> Jenkins
+        Jenkins --> PytestStage --> DockerBuild --> SecAudit --> K8sDeploy --> SmokeTest
+    end
+
+    subgraph K8sCluster["3. Kubernetes Orchestration Layer (Namespace: deepcare)"]
+        Ingress["Ingress Controller / NodePort Gateway\n(:30080 / :80 / :443)"]
+        
+        subgraph AppWorkloads["Application Workloads"]
+            FrontendPod["deepcare-frontend (2 Replicas)\nNginx Reverse Proxy + React SPA"]
+            BackendPod["deepcare-backend (2 Replicas)\nFastAPI Application Server"]
+            
+            subgraph MLSubsystem["Inference & Explainability Engine"]
+                DenseNet["PyTorch DenseNet-121\n14 Pathology Classifier"]
+                GradCAM["Grad-CAM Layer Activation\n(features.denseblock4)"]
+            end
+
+            subgraph ProbesMetrics["Health Probes & Telemetry"]
+                LivenessProbe["/health/live (Liveness)"]
+                ReadinessProbe["/health/ready (Readiness)"]
+                PromInstrument["/metrics (OpenMetrics/Prometheus)"]
             end
         end
 
-        subgraph Private DB Subnets
-            RDS[(Amazon RDS PostgreSQL 15 - Multi-AZ)]
+        subgraph DataWorkloads["Stateful Data & Storage Layer"]
+            PostgresPod[("PostgreSQL 15 Stateful Pod\n(Database :5432)")]
+            LocalStackPod[("LocalStack / AWS S3 Pod\n(Medical Storage Vault :4566)")]
+            PVC_PG["postgres-pvc (PersistentVolume)"]
+            PVC_S3["localstack-pvc (PersistentVolume)"]
         end
 
-        subgraph AWS Managed Cloud Services
-            S3[(Amazon S3 Medical Vault - KMS Encrypted)]
-            CW[Amazon CloudWatch - Logs, Alarms & Metrics]
-            SES[Amazon SES - Email Notifications]
-            KMS[AWS KMS - Customer Managed Keys]
+        subgraph MonitoringWorkloads["Cloud-Native Observability Stack"]
+            PrometheusServer["Prometheus Server :9090 / :30090\n(Scrapes :8000/metrics every 15s)"]
+            AlertManager["Prometheus Alert Rules\n(Latency, High Error Rate, DB Down)"]
+            GrafanaServer["Grafana Dashboard Server :3001 / :30030\n(DeepCare Clinical Ops Dashboard)"]
         end
     end
 
-    PatientWeb & DoctorWeb & AdminWeb -->|HTTPS 443| ALB
-    ALB -->|HTTP 8000| FastAPI
-    FastAPI --> ML & GradCAM
-    FastAPI -->|Queries / SSL| RDS
-    FastAPI -->|Pre-signed URLs / AES-256| S3
-    FastAPI -->|Custom Metrics & Logs| CW
-    FastAPI -->|Discharge & Report Alerts| SES
-    S3 & RDS -->|Encrypted with| KMS
-    ASG -->|Outbound Package Updates| NAT
+    %% Network & Request Flows
+    ClientTier -->|HTTPS / REST| Ingress
+    Ingress --> FrontendPod
+    FrontendPod -->|/api Reverse Proxy| BackendPod
+    BackendPod --> MLSubsystem
+    BackendPod --> ProbesMetrics
+    BackendPod -->|SQLAlchemy Connection Pool| PostgresPod
+    BackendPod -->|Presigned Boto3 / Local Fallback| LocalStackPod
+    PostgresPod --- PVC_PG
+    LocalStackPod --- PVC_S3
+
+    %% Monitoring Scraping & Visualization
+    PrometheusServer -->|Pull /metrics| BackendPod
+    PrometheusServer --> AlertManager
+    GrafanaServer -->|PromQL Queries| PrometheusServer
+
+    %% CI/CD Delivery target
+    K8sDeploy -.->|Deploys to| Ingress
 ```
+
+### Architectural Subsystems Breakdown
+
+1. **Clinical Presentation Layer (Frontend):**
+   - Built with **React 18**, **TypeScript**, **Vite**, and **Tailwind CSS**.
+   - Implements Role-Based Access Control (RBAC) across Attending Physicians, Registered Patients, and HIPAA Compliance Administrators.
+   - Includes the interactive **Deep Learning X-Ray Studio** featuring real-time **Side-by-Side** inspection and layered **Blend Mode** with dynamic opacity sliders comparing raw radiographs directly with Grad-CAM heatmaps.
+
+2. **Backend & AI Inference Engine:**
+   - **FastAPI** high-performance asynchronous web framework.
+   - **PyTorch DenseNet-121** pre-trained on the NIH ChestX-ray14 benchmark dataset (119 sequential real clinical studies included).
+   - Generates localized saliency maps using **Grad-CAM** backpropagation on `features.denseblock4.denselayer16.conv2`.
+   - Generates cryptographic, HIPAA-compliant PDF clinical diagnostic reports via ReportLab.
+
+3. **Cloud-Native Kubernetes Infrastructure (`infrastructure/k8s`):**
+   - **Namespace Isolation:** Dedicated `deepcare` namespace for complete workload segmentation.
+   - **Zero-Downtime Rolling Updates:** Replicas configured with rolling update strategies and resource boundaries.
+   - **Resilient Probes:** Integrated `/health/live` (process responsiveness) and `/health/ready` (database connectivity verification) health probes.
+   - **Persistent Storage:** PersistentVolumeClaims (`postgres-pvc`, `localstack-pvc`) ensure durability across pod restarts and rescheduling.
+
+4. **Continuous Integration & Deployment (Jenkins CI/CD):**
+   - Complete declarative [`Jenkinsfile`](./Jenkinsfile) automating 7 production pipeline stages: checkout, backend pytest suite (18 unit & integration tests), frontend Vite compilation, Docker container builds, security vulnerability scanning, rolling deployment via Kustomize, and post-deployment smoke tests.
+
+5. **Observability, Metrics & Telemetry (Prometheus + Grafana):**
+   - Exposed OpenMetrics endpoint via `prometheus-fastapi-instrumentator` at `/metrics`.
+   - Custom clinical telemetry: `deepcare_xrays_ingested_total`, `deepcare_ai_inferences_total`, `deepcare_ai_inference_duration_seconds`, `deepcare_reports_generated_total`, and `deepcare_database_health`.
+   - Pre-configured Grafana Clinical Operations dashboard visualizing request throughput, p95/p99 latency, AI inference duration distributions, active system users, and service uptime.
+   - Automated Prometheus alerting rules for high inference latency (>3.0s), API error rates (>5%), and database connection loss.
 
 ---
 
@@ -96,34 +158,48 @@ flowchart TD
 
 ---
 
-## 🚀 Quickstart — Local Development with Docker
+## 🚀 Quickstart & Deployment Options
 
-Run the complete platform locally using Docker Compose and LocalStack (AWS mock environment):
+You can run DeepCare using either **Kubernetes (Cloud-Native)** or **Docker Compose**:
 
-### 1. Prerequisites
-- Docker & Docker Compose
-- Node.js 18+ (for local frontend dev)
-- Python 3.11+ (for local backend dev)
+### Option A: Kubernetes Cluster Deployment (Recommended for Cloud-Native)
 
-### 2. Launch Stack
-```bash
-# Clone and enter directory
-cd deepcare
+```powershell
+# 1. Automated one-click rollout to Kubernetes (PowerShell)
+.\scripts\k8s-deploy.ps1
 
-# Launch PostgreSQL, LocalStack (S3 + CloudWatch), FastAPI, and React
-docker-compose up --build -d
+# Or deploy natively using Kustomize:
+kubectl apply -k infrastructure/k8s/
 ```
 
-### 3. Seed Demo Data
+Verify that all workloads are healthy in the `deepcare` namespace:
 ```bash
-# Populate database with certified doctors, patients, and sample X-rays
+kubectl get pods -n deepcare
+```
+
+### Option B: Local Multi-Container Stack with Docker Compose
+
+```bash
+# Launch PostgreSQL, LocalStack, FastAPI, React, Prometheus, and Grafana
+docker-compose up --build -d
+
+# Seed database with certified doctors, patients, and 119 NIH ChestXray14 scans
 python scripts/seed_demo_data.py
 ```
 
-### 4. Access DeepCare
-- **Web Application:** [http://localhost:3000](http://localhost:3000)
-- **FastAPI OpenAPI Swagger Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Health Check Endpoint:** [http://localhost:8000/health](http://localhost:8000/health)
+---
+
+## 🌐 Application & Monitoring Portals
+
+| Service / Portal | Docker URL | Kubernetes (NodePort) | Default Credentials | Description |
+|---|---|---|---|---|
+| **Web Application** | [http://localhost:3000](http://localhost:3000) | [http://localhost:30080](http://localhost:30080) | *(See table below)* | Doctor, Patient & Admin Portals |
+| **FastAPI Swagger API** | [http://localhost:8000/docs](http://localhost:8000/docs) | [http://localhost:30080/docs](http://localhost:30080/docs) | — | Interactive OpenAPI Documentation |
+| **Prometheus Metrics** | [http://localhost:9090](http://localhost:9090) | [http://localhost:30090](http://localhost:30090) | — | Application & Infrastructure Scraper |
+| **Grafana Monitoring** | [http://localhost:3001](http://localhost:3001) | [http://localhost:30030](http://localhost:30030) | `admin` / `admin` | DeepCare Clinical Ops Dashboard |
+| **Kubernetes Dashboard**| — | [https://localhost:30443](https://localhost:30443) | *(Token generated)* | Cluster Workload Manager |
+| **Health Liveness Probe**| [http://localhost:8000/health/live](http://localhost:8000/health/live) | [http://localhost:30080/health/live](http://localhost:30080/health/live) | — | Process Liveness Status |
+| **Health Readiness Probe**| [http://localhost:8000/health/ready](http://localhost:8000/health/ready) | [http://localhost:30080/health/ready](http://localhost:30080/health/ready) | — | Database Connectivity Status |
 
 ---
 

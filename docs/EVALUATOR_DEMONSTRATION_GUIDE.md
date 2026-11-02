@@ -88,25 +88,72 @@ To prevent statistical bias and clinical data leakage:
 ## 5. End-to-End System Architecture
 
 ```mermaid
-graph TD
-    Client["Browser: React 18 + Vite (Port 3000)"] --> Gateway["Nginx Reverse Proxy (Port 80)"]
-    Gateway --> Backend["FastAPI Backend (Port 8000)"]
-    Backend --> Postgres[("PostgreSQL 15 (Port 5432)")]
-    Backend --> ML["DenseNet-121 Engine (CPU/CUDA)"]
-    Backend --> Storage["Storage Service (/api/v1/storage/view)"]
-    Storage --> LocalDisk["Local Disk & S3 Fallback (demo_data/ & storage/)"]
+flowchart TD
+    subgraph Users["Users & Web Portals"]
+        Doctor["Attending Radiologist"]
+        Patient["Registered Patient"]
+        Admin["HIPAA Compliance Admin"]
+    end
+
+    subgraph CI_CD["Automated CI/CD Pipeline (Jenkins)"]
+        GitHub["GitHub Repository"] --> JenkinsServer["Jenkins Pipeline"]
+        JenkinsServer --> StageTest["Pytest Suite"]
+        StageTest --> StageBuild["Docker Multi-Stage Build"]
+        StageBuild --> StageDeploy["K8s Rolling Deploy (k8s-deploy.ps1)"]
+    end
+
+    subgraph Cluster["Kubernetes Cloud-Native Cluster (Namespace: deepcare)"]
+        Gateway["Nginx Ingress / NodePort (:30080 / :80)"]
+        
+        subgraph Pods["Microservices & AI Workloads"]
+            Frontend["deepcare-frontend (2 Replicas)\nReact 18 + Vite SPA"]
+            Backend["deepcare-backend (2 Replicas)\nFastAPI Application Server"]
+            DenseNet["PyTorch DenseNet-121 Engine\n(14 Pathology Multi-label)"]
+            GradCAM["Grad-CAM Saliency Generator\n(denseblock4 activation)"]
+            Probes["/health/live & /health/ready\n(Kubernetes Health Probes)"]
+        end
+
+        subgraph PersistentData["Stateful Persistent Storage"]
+            Postgres[("PostgreSQL 15 (Port 5432)\nPVC: postgres-pvc")]
+            LocalStack[("LocalStack / AWS S3 Vault (Port 4566)\nPVC: localstack-pvc")]
+            StorageSvc["Storage Endpoint (/api/v1/storage/view)\nLocal Dataset & NIH Benchmark Fallback"]
+        end
+
+        subgraph Observability["Full-Stack Observability"]
+            Prometheus["Prometheus Server (:9090 / :30090)\nScrapes /metrics every 15s"]
+            Alerts["Prometheus Alert Rules\nLatency / Error / DB Health"]
+            Grafana["Grafana Server (:3001 / :30030)\nDeepCare Clinical Ops Dashboard"]
+        end
+    end
+
+    Users -->|HTTPS / NodePort 30080| Gateway
+    Gateway --> Frontend
+    Frontend -->|/api REST Proxy| Backend
+    Backend --> DenseNet & GradCAM
+    Backend --> Probes
+    Backend -->|Connection Pool| Postgres
+    Backend -->|Presigned Asset URLs| LocalStack
+    Backend --> StorageSvc
+    
+    Prometheus -->|Scrape /metrics| Backend
+    Prometheus --> Alerts
+    Grafana -->|PromQL Queries| Prometheus
+    StageDeploy -.->|Continuous Deployment| Gateway
 ```
 
 ---
 
 ## 6. Demonstration Credentials & Quick Reference
 
-| Portal | URL | Demo Account | Password | Role Description |
-| :--- | :--- | :--- | :--- | :--- |
-| **Doctor Portal** | `http://localhost:3000` | `dr.sarah@deepcare.health` | `DoctorPass123!` | Attending Radiologist / AI Analysis Workspace |
-| **Patient Portal** | `http://localhost:3000` | `john.doe@patient.deepcare.health` | `PatientPass123!` | Patient Dashboard, Gallery & Certified Reports |
-| **Admin Portal** | `http://localhost:3000` | `admin@deepcare.health` | `AdminPass123!` | System Health, Storage Stats, Audit Trail |
-| **API Docs (Swagger)**| `http://localhost:8000/docs` | *(Bearer JWT Auth)* | — | Interactive OpenAPI Specification |
+| Portal / Service | Local Docker URL | Kubernetes (NodePort) | Demo Account | Password | Role / Function |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Doctor Portal** | `http://localhost:3000` | `http://localhost:30080` | `dr.sarah@deepcare.health` | `DoctorPass123!` | Radiologist AI Analysis & Report Workspace |
+| **Patient Portal** | `http://localhost:3000` | `http://localhost:30080` | `john.doe@patient.deepcare.health` | `PatientPass123!` | Health Dashboard, Appointments & Reports |
+| **Admin Portal** | `http://localhost:3000` | `http://localhost:30080` | `admin@deepcare.health` | `AdminPass123!` | System Health, Storage Stats, Audit Trail |
+| **FastAPI Swagger**| `http://localhost:8000/docs` | `http://localhost:30080/docs` | *(Bearer JWT Auth)* | — | Interactive OpenAPI Specification |
+| **Prometheus** | `http://localhost:9090` | `http://localhost:30090` | — | — | Metrics Scraping & Telemetry Engine |
+| **Grafana** | `http://localhost:3001` | `http://localhost:30030` | `admin` | `admin` | DeepCare Clinical Ops Dashboard |
+| **Kubernetes Dashboard**| — | `https://localhost:30443` | *(Bearer Token)* | — | Cluster Workload Management Console |
 
 ---
 
