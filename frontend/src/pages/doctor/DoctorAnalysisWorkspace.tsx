@@ -5,7 +5,7 @@ import { doctorAPI, AnalysisResult, ReportCreate, DoctorXrayScanItem } from '../
 import {
   Activity, Sparkles, Brain, CheckCircle2, AlertTriangle,
   FileText, Download, Sliders, Eye, RefreshCw, Check, Clock,
-  Database, Image as ImageIcon, ArrowRight, PlusCircle, Search
+  Database, Image as ImageIcon, ArrowRight, PlusCircle, Search, FileCheck
 } from 'lucide-react';
 
 const DoctorAnalysisWorkspace: React.FC = () => {
@@ -97,12 +97,38 @@ const DoctorAnalysisWorkspace: React.FC = () => {
     if (!analysis) return;
     try {
       setSavingReview(true);
+      // 1. Save review on analysis
       await doctorAPI.reviewAnalysis(analysis.analysis_id || analysis.id, {
         doctor_review_notes: doctorNotes,
         doctor_reviewed: true,
       });
+
+      // 2. Ensure report is created or updated with doctor observations & notes
+      const activeScan = availableScans.find(
+        (s) => s.xray_id === analysis.xray_id || s.xray_id === xrayId
+      );
+      const patientId = analysis.patient_id || activeScan?.patient_id || 'PAT-2026-0001';
+      const topCondition = analysis.top_prediction || 'Pneumonia';
+      const conf = ((analysis.top_confidence || 0.85) * 100).toFixed(1);
+
+      const payload: ReportCreate = {
+        patient_id: patientId,
+        xray_id: analysis.xray_id,
+        analysis_id: analysis.analysis_id || analysis.id,
+        title: `Chest Radiograph AI Evaluation — ${topCondition}`,
+        report_type: 'radiology',
+        summary: `Automated DenseNet-121 model flagged elevated risk for ${topCondition} with ${conf}% confidence. Verified by attending physician.`,
+        clinical_findings: doctorNotes || `Clinical evaluation conducted. Findings consistent with thoracic imaging. Top prediction: ${topCondition} (${conf}%).`,
+        recommendations: 'Initiate appropriate clinical therapy protocol. Follow-up chest radiograph in 14 days to track resolution.',
+        ai_analysis_included: true,
+      };
+
+      const res = await doctorAPI.createReport(payload);
+      if (res.data) {
+        setReportCreated(res.data);
+      }
       setReviewSaved(true);
-      setTimeout(() => setReviewSaved(false), 3000);
+      setTimeout(() => setReviewSaved(false), 4000);
     } catch (err: any) {
       console.error('Failed to save review:', err);
       alert('Error updating clinical review.');
@@ -115,11 +141,15 @@ const DoctorAnalysisWorkspace: React.FC = () => {
     if (!analysis) return;
     try {
       setGeneratingReport(true);
+      const activeScan = availableScans.find(
+        (s) => s.xray_id === analysis.xray_id || s.xray_id === xrayId
+      );
+      const patientId = analysis.patient_id || activeScan?.patient_id || 'PAT-2026-0001';
       const topCondition = analysis.top_prediction || 'Pneumonia';
       const conf = ((analysis.top_confidence || 0.85) * 100).toFixed(1);
 
       const payload: ReportCreate = {
-        patient_id: 'PAT-2026-0001',
+        patient_id: patientId,
         xray_id: analysis.xray_id,
         analysis_id: analysis.analysis_id || analysis.id,
         title: `Chest Radiograph AI Evaluation — ${topCondition}`,
@@ -132,6 +162,8 @@ const DoctorAnalysisWorkspace: React.FC = () => {
 
       const res = await doctorAPI.createReport(payload);
       setReportCreated(res.data);
+      setReviewSaved(true);
+      setTimeout(() => setReviewSaved(false), 4000);
     } catch (err: any) {
       console.error('Failed to generate report:', err);
       alert('Error generating certified report.');
@@ -547,10 +579,17 @@ const DoctorAnalysisWorkspace: React.FC = () => {
                 {reportCreated && (
                   <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl space-y-2 text-xs">
                     <div className="flex items-center justify-between font-bold text-teal-900">
-                      <span>Report Generated</span>
+                      <span>Report Ready & Updated</span>
                       <span className="font-mono text-[10px]">{reportCreated.report_id}</span>
                     </div>
-                    <p className="text-teal-700">Official medical report compiled with digital signature and S3 PDF link.</p>
+                    <p className="text-teal-700">Official medical report compiled with your physician observations.</p>
+                    <button
+                      onClick={() => navigate('/doctor/reports')}
+                      className="w-full mt-1.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                    >
+                      <FileCheck className="w-3.5 h-3.5" />
+                      View in Reports Section
+                    </button>
                   </div>
                 )}
               </div>

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -50,6 +51,16 @@ from app.utils.id_generator import (
 
 router = APIRouter(prefix="/doctors", tags=["Doctors"])
 logger = logging.getLogger(__name__)
+
+
+def _is_valid_uuid(val: Optional[str]) -> bool:
+    if not val:
+        return False
+    try:
+        uuid.UUID(str(val))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
 
 
 def _require_doctor(current_user) -> None:
@@ -643,6 +654,8 @@ def request_ai_analysis(
 
     resp = AnalysisResponse.model_validate(analysis)
     resp.xray_id = xray.xray_id
+    if patient:
+        resp.patient_id = patient.patient_id
 
     # Generate presigned URL for GradCAM and Original X-ray if available
     if analysis.gradcam_s3_key:
@@ -660,16 +673,64 @@ def review_analysis(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Doctor adds clinical notes to an AI analysis."""
+    """Doctor adds clinical notes to an AI analysis and synchronizes them to the clinical report."""
     _require_doctor(current_user)
-    analysis = db.query(AIAnalysis).filter(AIAnalysis.analysis_id == analysis_id).first()
+    doctor = _get_doctor_profile(db, current_user.id)
+    analysis_crit = (
+        or_(AIAnalysis.analysis_id == analysis_id, AIAnalysis.id == analysis_id)
+        if _is_valid_uuid(analysis_id)
+        else (AIAnalysis.analysis_id == analysis_id)
+    )
+    analysis = db.query(AIAnalysis).filter(analysis_crit).first()
     if not analysis:
         raise HTTPException(404, "Analysis not found")
     analysis.doctor_reviewed = payload.doctor_reviewed
     analysis.doctor_review_notes = payload.doctor_review_notes
     analysis.doctor_reviewed_at = datetime.now(timezone.utc)
+
+    # Sync with or automatically generate a MedicalReport so doctor's observations & notes reflect in Reports immediately
+    xray = db.query(XrayImage).filter(XrayImage.id == analysis.xray_id).first()
+    patient = db.query(Patient).filter(Patient.id == xray.patient_id).first() if xray else None
+
+    if patient:
+        existing_report = (
+            db.query(MedicalReport)
+            .filter(
+                or_(
+                    MedicalReport.analysis_id == analysis.id,
+                    MedicalReport.xray_id == xray.id,
+                )
+            )
+            .first()
+        )
+        if existing_report:
+            existing_report.clinical_findings = payload.doctor_review_notes
+            existing_report.summary = (
+                f"Reviewed by Dr. {doctor.first_name} {doctor.last_name}: "
+                f"AI flagged {analysis.top_prediction or 'thoracic finding'} ({round((analysis.top_confidence or 0.85) * 100, 1)}%)."
+            )
+            existing_report.updated_at = datetime.now(timezone.utc)
+        else:
+            top_cond = analysis.top_prediction or "Radiology"
+            conf = round((analysis.top_confidence or 0.85) * 100, 1)
+            new_report = MedicalReport(
+                report_id=generate_report_id(db),
+                patient_id=patient.id,
+                doctor_id=doctor.id,
+                xray_id=xray.id,
+                analysis_id=analysis.id,
+                title=f"Chest Radiograph AI Evaluation — {top_cond}",
+                report_type="radiology",
+                summary=f"Automated DenseNet-121 analysis flagged elevated risk for {top_cond} ({conf}%). Verified by attending physician Dr. {doctor.first_name} {doctor.last_name}.",
+                clinical_findings=payload.doctor_review_notes,
+                recommendations="Follow-up chest radiograph and clinical correlation recommended.",
+                ai_analysis_included=True,
+                status="draft",
+            )
+            db.add(new_report)
+
     db.commit()
-    return MessageResponse(message="Analysis review saved")
+    return MessageResponse(message="Analysis review saved and clinical report updated")
 
 
 # ─────────────────────────────── Consultations ───────────────────────────────
@@ -718,10 +779,15 @@ def create_report(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Create a draft medical report for a patient."""
+    """Create or update a draft medical report for a patient."""
     _require_doctor(current_user)
     doctor = _get_doctor_profile(db, current_user.id)
-    patient = db.query(Patient).filter(Patient.patient_id == payload.patient_id).first()
+    pat_crit = (
+        or_(Patient.patient_id == payload.patient_id, Patient.id == payload.patient_id)
+        if _is_valid_uuid(payload.patient_id)
+        else (Patient.patient_id == payload.patient_id)
+    )
+    patient = db.query(Patient).filter(pat_crit).first()
     if not patient:
         raise HTTPException(404, "Patient not found")
     if not _check_patient_access(db, doctor, patient):
@@ -732,19 +798,67 @@ def create_report(
     if rtype not in valid_types:
         rtype = "radiology"
 
-    report = MedicalReport(
-        report_id=generate_report_id(db),
-        patient_id=patient.id,
-        doctor_id=doctor.id,
-        title=payload.title,
-        report_type=rtype,
-        summary=payload.summary,
-        clinical_findings=payload.clinical_findings,
-        recommendations=payload.recommendations,
-        ai_analysis_included=payload.ai_analysis_included,
-        status="draft",
-    )
-    db.add(report)
+    # Resolve xray and analysis if provided
+    xray_obj = None
+    if payload.xray_id:
+        x_crit = (
+            or_(XrayImage.xray_id == payload.xray_id, XrayImage.id == payload.xray_id)
+            if _is_valid_uuid(payload.xray_id)
+            else (XrayImage.xray_id == payload.xray_id)
+        )
+        xray_obj = db.query(XrayImage).filter(x_crit).first()
+
+    analysis_obj = None
+    if payload.analysis_id:
+        a_crit = (
+            or_(AIAnalysis.analysis_id == payload.analysis_id, AIAnalysis.id == payload.analysis_id)
+            if _is_valid_uuid(payload.analysis_id)
+            else (AIAnalysis.analysis_id == payload.analysis_id)
+        )
+        analysis_obj = db.query(AIAnalysis).filter(a_crit).first()
+
+    # Check if a report already exists for this analysis or xray to update rather than duplicate
+    report = None
+    if analysis_obj:
+        report = db.query(MedicalReport).filter(MedicalReport.analysis_id == analysis_obj.id).first()
+    if not report and xray_obj:
+        report = db.query(MedicalReport).filter(MedicalReport.xray_id == xray_obj.id).first()
+
+    if report:
+        report.title = payload.title
+        report.report_type = rtype
+        report.summary = payload.summary
+        report.clinical_findings = payload.clinical_findings
+        report.recommendations = payload.recommendations
+        report.ai_analysis_included = payload.ai_analysis_included
+        if xray_obj:
+            report.xray_id = xray_obj.id
+        if analysis_obj:
+            report.analysis_id = analysis_obj.id
+        report.updated_at = datetime.now(timezone.utc)
+    else:
+        report = MedicalReport(
+            report_id=generate_report_id(db),
+            patient_id=patient.id,
+            doctor_id=doctor.id,
+            xray_id=xray_obj.id if xray_obj else None,
+            analysis_id=analysis_obj.id if analysis_obj else None,
+            title=payload.title,
+            report_type=rtype,
+            summary=payload.summary,
+            clinical_findings=payload.clinical_findings,
+            recommendations=payload.recommendations,
+            ai_analysis_included=payload.ai_analysis_included,
+            status="draft",
+        )
+        db.add(report)
+
+    # Sync back to analysis review notes if available
+    if analysis_obj and payload.clinical_findings:
+        analysis_obj.doctor_review_notes = payload.clinical_findings
+        analysis_obj.doctor_reviewed = True
+        analysis_obj.doctor_reviewed_at = datetime.now(timezone.utc)
+
     db.commit()
     db.refresh(report)
 
@@ -756,6 +870,15 @@ def create_report(
 
     resp = ReportResponse.model_validate(report)
     resp.patient_id = patient.patient_id
+    resp.patient_name = f"{patient.first_name} {patient.last_name}"
+    resp.doctor_name = f"Dr. {doctor.first_name} {doctor.last_name}"
+    resp.doctor_id = doctor.doctor_id
+    if xray_obj:
+        resp.xray_id = xray_obj.xray_id
+    if analysis_obj:
+        resp.analysis_id = analysis_obj.analysis_id
+    if report.pdf_s3_key:
+        resp.pdf_presigned_url = generate_presigned_url(report.pdf_s3_key, 300)
     return resp
 
 
@@ -766,15 +889,17 @@ def approve_report(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Approve a draft report and generate a PDF."""
+    """Approve a draft report, generate a PDF with doctor observations, and make viewable."""
     _require_doctor(current_user)
     doctor = _get_doctor_profile(db, current_user.id)
+    rep_crit = (
+        or_(MedicalReport.report_id == report_id, MedicalReport.id == report_id)
+        if _is_valid_uuid(report_id)
+        else (MedicalReport.report_id == report_id)
+    )
     report = (
         db.query(MedicalReport)
-        .filter(
-            MedicalReport.report_id == report_id,
-            MedicalReport.doctor_id == doctor.id,
-        )
+        .filter(rep_crit, MedicalReport.doctor_id == doctor.id)
         .first()
     )
     if not report:
@@ -814,9 +939,145 @@ def approve_report(
 
     resp = ReportResponse.model_validate(report)
     resp.patient_id = patient.patient_id if patient else ""
+    resp.patient_name = f"{patient.first_name} {patient.last_name}" if patient else ""
+    resp.doctor_name = f"Dr. {doctor.first_name} {doctor.last_name}"
+    resp.doctor_id = doctor.doctor_id
     if report.pdf_s3_key:
         resp.pdf_presigned_url = generate_presigned_url(report.pdf_s3_key, 300)
     return resp
+
+
+@router.get("/reports")
+def get_doctor_reports(
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
+):
+    """Get all medical reports authored by or assigned to this doctor."""
+    _require_doctor(current_user)
+    doctor = _get_doctor_profile(db, current_user.id)
+    offset = (page - 1) * page_size
+    q = (
+        db.query(MedicalReport, Patient, Doctor)
+        .join(Patient, MedicalReport.patient_id == Patient.id)
+        .join(Doctor, MedicalReport.doctor_id == Doctor.id)
+        .filter(MedicalReport.doctor_id == doctor.id)
+    )
+
+    if search:
+        search_filter = f"%{search}%"
+        q = q.filter(
+            or_(
+                MedicalReport.report_id.ilike(search_filter),
+                MedicalReport.title.ilike(search_filter),
+                MedicalReport.clinical_findings.ilike(search_filter),
+                Patient.patient_id.ilike(search_filter),
+                Patient.first_name.ilike(search_filter),
+                Patient.last_name.ilike(search_filter),
+            )
+        )
+
+    q = q.order_by(MedicalReport.created_at.desc())
+    total = q.count()
+    rows = q.offset(offset).limit(page_size).all()
+
+    items = []
+    for rep, pat, doc in rows:
+        item = ReportResponse.model_validate(rep)
+        item.patient_id = pat.patient_id
+        item.patient_name = f"{pat.first_name} {pat.last_name}"
+        item.doctor_id = doc.doctor_id
+        item.doctor_name = f"Dr. {doc.first_name} {doc.last_name}"
+        if rep.pdf_s3_key:
+            item.pdf_presigned_url = generate_presigned_url(rep.pdf_s3_key, 300)
+        items.append(item)
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@router.get("/reports/{report_id}", response_model=ReportResponse)
+def get_doctor_report_by_id(
+    report_id: str,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve a specific report by report_id or UUID."""
+    _require_doctor(current_user)
+    doctor = _get_doctor_profile(db, current_user.id)
+    rep_crit = (
+        or_(MedicalReport.report_id == report_id, MedicalReport.id == report_id)
+        if _is_valid_uuid(report_id)
+        else (MedicalReport.report_id == report_id)
+    )
+    report = (
+        db.query(MedicalReport)
+        .filter(rep_crit, MedicalReport.doctor_id == doctor.id)
+        .first()
+    )
+    if not report:
+        raise HTTPException(404, "Report not found")
+    patient = db.query(Patient).filter(Patient.id == report.patient_id).first()
+    resp = ReportResponse.model_validate(report)
+    resp.patient_id = patient.patient_id if patient else ""
+    resp.patient_name = f"{patient.first_name} {patient.last_name}" if patient else ""
+    resp.doctor_id = doctor.doctor_id
+    resp.doctor_name = f"Dr. {doctor.first_name} {doctor.last_name}"
+    if report.pdf_s3_key:
+        resp.pdf_presigned_url = generate_presigned_url(report.pdf_s3_key, 300)
+    return resp
+
+
+@router.get("/reports/{report_id}/download")
+def download_doctor_report(
+    report_id: str,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Download a report PDF. Generates PDF dynamically if not yet compiled."""
+    _require_doctor(current_user)
+    doctor = _get_doctor_profile(db, current_user.id)
+    rep_crit = (
+        or_(MedicalReport.report_id == report_id, MedicalReport.id == report_id)
+        if _is_valid_uuid(report_id)
+        else (MedicalReport.report_id == report_id)
+    )
+    report = (
+        db.query(MedicalReport)
+        .filter(rep_crit, MedicalReport.doctor_id == doctor.id)
+        .first()
+    )
+    if not report:
+        raise HTTPException(404, "Report not found")
+
+    patient = db.query(Patient).filter(Patient.id == report.patient_id).first()
+    if not patient:
+        raise HTTPException(404, "Patient not found")
+
+    if not report.pdf_s3_key:
+        # Generate on the fly
+        pdf_bytes = generate_report_pdf(report, doctor, patient)
+        if pdf_bytes:
+            from app.services.s3_service import build_report_s3_key, upload_file_to_s3
+            from app.core.config import settings as cfg
+            pdf_key = build_report_s3_key(patient.patient_id, report.report_id)
+            uploaded = upload_file_to_s3(pdf_bytes, pdf_key, content_type="application/pdf")
+            if uploaded:
+                report.pdf_s3_key = pdf_key
+                report.pdf_s3_bucket = cfg.S3_BUCKET_NAME
+                db.commit()
+
+    if not report.pdf_s3_key:
+        raise HTTPException(500, "Could not compile PDF report at this time")
+
+    url = generate_presigned_url(report.pdf_s3_key, expiry_seconds=300)
+    return {"download_url": url, "report_id": report.report_id}
 
 
 # ─────────────────────────────── Appointments ────────────────────────────────

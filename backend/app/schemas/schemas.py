@@ -256,6 +256,7 @@ class AnalysisResponse(BaseModel):
     id: str
     analysis_id: str
     xray_id: str
+    patient_id: Optional[str] = None
     model_name: str
     model_version: str
     predictions: Optional[Dict[str, float]] = None
@@ -302,7 +303,11 @@ class ReportResponse(BaseModel):
     id: str
     report_id: str
     patient_id: str
+    patient_name: Optional[str] = None
     doctor_id: str
+    doctor_name: Optional[str] = None
+    xray_id: Optional[str] = None
+    analysis_id: Optional[str] = None
     title: str
     report_type: str
     summary: Optional[str] = None

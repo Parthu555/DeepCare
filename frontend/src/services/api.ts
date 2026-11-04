@@ -82,6 +82,10 @@ export const doctorAPI = {
     api.put(`/doctors/analyses/${analysis_id}/review`, data),
   createConsultation: (data: ConsultationCreate) => api.post('/doctors/consultations', data),
   createReport: (data: ReportCreate) => api.post('/doctors/reports', data),
+  getReports: (page = 1, search = '') =>
+    api.get(`/doctors/reports?page=${page}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
+  getReportById: (report_id: string) => api.get(`/doctors/reports/${report_id}`),
+  downloadReport: (report_id: string) => api.get(`/doctors/reports/${report_id}/download`),
   approveReport: (report_id: string, data: { is_patient_viewable: boolean }) =>
     api.post(`/doctors/reports/${report_id}/approve`, data),
   scheduleAppointment: (data: AppointmentCreate) => api.post('/doctors/appointments', data),
@@ -181,6 +185,7 @@ export interface AnalysisResult {
   id: string;
   analysis_id: string;
   xray_id: string;
+  patient_id?: string;
   model_name: string;
   model_version: string;
   predictions?: Record<string, number>;

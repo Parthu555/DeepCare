@@ -21,6 +21,7 @@ import DoctorPatientSearch from './pages/doctor/DoctorPatientSearch';
 import DoctorUploadXray from './pages/doctor/DoctorUploadXray';
 import DoctorAnalysisWorkspace from './pages/doctor/DoctorAnalysisWorkspace';
 import DoctorConsultations from './pages/doctor/DoctorConsultations';
+import DoctorReports from './pages/doctor/DoctorReports';
 import DoctorAppointments from './pages/doctor/DoctorAppointments';
 
 // Admin Pages
@@ -176,7 +177,7 @@ const App: React.FC = () => {
           path="/doctor/reports"
           element={
             <ProtectedRoute allowedRoles={['doctor']}>
-              <PatientReports />
+              <DoctorReports />
             </ProtectedRoute>
           }
         />
