@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { patientAPI } from '../../services/api';
+import { patientAPI, doctorAPI } from '../../services/api';
+import { useAuthStore } from '../../store/authStore';
 import {
   FileText, Download, Calendar, ShieldCheck, CheckCircle2,
   Clock, Search, AlertCircle, FileCheck, Stethoscope
@@ -27,6 +28,8 @@ const PatientReports: React.FC = () => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<MedicalReportItem | null>(null);
 
+  const { role } = useAuthStore();
+
   useEffect(() => {
     loadReports();
   }, []);
@@ -34,8 +37,21 @@ const PatientReports: React.FC = () => {
   const loadReports = async () => {
     try {
       setLoading(true);
-      const res = await patientAPI.getReports(1);
-      setReports(res.data.items || res.data || []);
+      let res;
+      if (role === 'doctor') {
+        res = await doctorAPI.getReports(1);
+      } else {
+        try {
+          res = await patientAPI.getReports(1);
+        } catch (e: any) {
+          if (e?.response?.status === 403) {
+            res = await doctorAPI.getReports(1);
+          } else {
+            throw e;
+          }
+        }
+      }
+      setReports(res?.data?.items || res?.data || []);
     } catch (err) {
       console.error('Failed to load reports:', err);
     } finally {
@@ -46,8 +62,17 @@ const PatientReports: React.FC = () => {
   const handleDownloadPdf = async (reportId: string) => {
     try {
       setDownloadingId(reportId);
-      const res = await patientAPI.downloadReport(reportId);
-      if (res.data?.download_url) {
+      let res;
+      if (role === 'doctor') {
+        res = await doctorAPI.downloadReport(reportId);
+      } else {
+        try {
+          res = await patientAPI.downloadReport(reportId);
+        } catch (e) {
+          res = await doctorAPI.downloadReport(reportId);
+        }
+      }
+      if (res?.data?.download_url) {
         window.open(res.data.download_url, '_blank');
       }
     } catch (err) {
