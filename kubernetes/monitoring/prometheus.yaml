@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deepcare-prometheus-config
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: prometheus-config
+    app.kubernetes.io/part-of: deepcare
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      - job_name: "deepcare-backend"
+        metrics_path: "/metrics"
+        scrape_interval: 15s
+        static_configs:
+          - targets: ["deepcare-backend:8000"]
+            labels:
+              app: "deepcare-backend"
+              tier: "api"
+
+      - job_name: "prometheus"
+        static_configs:
+          - targets: ["localhost:9090"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepcare-prometheus
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: deepcare
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: deepcare-prometheus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: deepcare-prometheus
+        app.kubernetes.io/component: monitoring
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.51.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--web.enable-lifecycle"
+          ports:
+            - containerPort: 9090
+              name: web
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/prometheus
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: config-volume
+          configMap:
+            name: deepcare-prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepcare-prometheus
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: deepcare
+spec:
+  type: NodePort
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: 30090
+      protocol: TCP
+      name: web
+  selector:
+    app.kubernetes.io/name: deepcare-prometheus
+

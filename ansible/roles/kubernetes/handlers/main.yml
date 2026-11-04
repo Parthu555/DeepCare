@@ -1,0 +1,9 @@
+---
+- name: restart kubelet
+  service:
+    name: kubelet
+    state: restarted
+    enabled: true
+  become: true
+  when: ansible_os_family == "Debian" or ansible_os_family == "RedHat"
+

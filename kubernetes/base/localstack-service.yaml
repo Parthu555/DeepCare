@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepcare-localstack
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-localstack
+    app.kubernetes.io/component: storage-vault
+    app.kubernetes.io/part-of: deepcare
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4566
+      targetPort: 4566
+      protocol: TCP
+      name: edge
+  selector:
+    app.kubernetes.io/name: deepcare-localstack
+

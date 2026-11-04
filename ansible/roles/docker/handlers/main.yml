@@ -1,0 +1,17 @@
+---
+- name: restart docker
+  service:
+    name: docker
+    state: restarted
+    enabled: true
+  become: true
+  when: ansible_os_family == "Debian" or ansible_os_family == "RedHat"
+
+- name: restart containerd
+  service:
+    name: containerd
+    state: restarted
+    enabled: true
+  become: true
+  when: ansible_os_family == "Debian" or ansible_os_family == "RedHat"
+

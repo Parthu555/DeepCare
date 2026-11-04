@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepcare-frontend
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-frontend
+    app.kubernetes.io/component: web-frontend
+    app.kubernetes.io/part-of: deepcare
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: deepcare-frontend
+

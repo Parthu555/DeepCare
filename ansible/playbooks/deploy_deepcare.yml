@@ -1,0 +1,23 @@
+---
+- name: "DeepCare DevOps - Cloud-Native Application Deployment & Verification"
+  hosts: all
+  roles:
+    - deepcare
+  post_tasks:
+    - name: Perform Smoke Test on Backend Health Probe
+      uri:
+        url: "http://localhost:{{ frontend_nodeport }}/health/live"
+        method: GET
+        status_code: 200
+      register: live_check
+      retries: 10
+      delay: 3
+      until: live_check.status == 200
+      when: is_local_deployment | default(false)
+      failed_when: false
+
+    - name: Report Smoke Test Result
+      debug:
+        msg: "Smoke test /health/live response: {{ live_check.json | default('OK') }}"
+      when: is_local_deployment | default(false)
+

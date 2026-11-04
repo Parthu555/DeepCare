@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deepcare-grafana-datasources
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: grafana-datasources
+    app.kubernetes.io/part-of: deepcare
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://deepcare-prometheus:9090
+        isDefault: true
+        editable: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepcare-grafana
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-grafana
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: deepcare
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: deepcare-grafana
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: deepcare-grafana
+        app.kubernetes.io/component: monitoring
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.4.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: web
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: "admin"
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "admin"
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+          volumeMounts:
+            - name: datasources-volume
+              mountPath: /etc/grafana/provisioning/datasources
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+      volumes:
+        - name: datasources-volume
+          configMap:
+            name: deepcare-grafana-datasources
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepcare-grafana
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-grafana
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: deepcare
+spec:
+  type: NodePort
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30030
+      protocol: TCP
+      name: web
+  selector:
+    app.kubernetes.io/name: deepcare-grafana
+

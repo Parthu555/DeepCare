@@ -1,0 +1,6 @@
+---
+- name: "DeepCare DevOps - Container Runtime (Docker) Installation & Verification"
+  hosts: all
+  roles:
+    - docker
+

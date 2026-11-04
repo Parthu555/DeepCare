@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepcare-localstack
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-localstack
+    app.kubernetes.io/component: storage-vault
+    app.kubernetes.io/part-of: deepcare
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: deepcare-localstack
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: deepcare-localstack
+        app.kubernetes.io/component: storage-vault
+    spec:
+      containers:
+        - name: localstack
+          image: localstack/localstack:3.4.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4566
+              name: edge
+          env:
+            - name: SERVICES
+              value: "s3"
+            - name: AWS_DEFAULT_REGION
+              value: "us-east-1"
+            - name: PERSISTENCE
+              value: "0"
+            - name: DOCKER_HOST
+              value: "unix:///var/run/docker.sock"
+          volumeMounts:
+            - name: localstack-storage
+              mountPath: /var/lib/localstack
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 800m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /_localstack/health
+              port: 4566
+            initialDelaySeconds: 25
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /_localstack/health
+              port: 4566
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: localstack-storage
+          persistentVolumeClaim:
+            claimName: localstack-pvc
+

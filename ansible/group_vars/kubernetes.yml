@@ -1,0 +1,51 @@
+---
+# Kubernetes Node & Component Variables
+kubernetes_version: "1.29"
+cni_plugin: "flannel"  # or calico
+pod_network_cidr: "10.244.0.0/16"
+service_cidr: "10.96.0.0/12"
+
+# Sysctl & Kernel Modules for K8s Nodes
+k8s_kernel_modules:
+  - overlay
+  - br_netfilter
+
+k8s_sysctl_settings:
+  net.bridge.bridge-nf-call-iptables: 1
+  net.bridge.bridge-nf-call-ip6tables: 1
+  net.ipv4.ip_forward: 1
+
+# Container Runtime Packages
+containerd_package: "containerd.io"
+docker_compose_plugin: "docker-compose-plugin"
+
+# Kubeadm & Kubectl Packages
+k8s_packages:
+  - kubelet
+  - kubeadm
+  - kubectl
+
+# Resource Limits for Deployment
+resources:
+  backend:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+  frontend:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  postgres:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+

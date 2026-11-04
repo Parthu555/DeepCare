@@ -1,0 +1,75 @@
+---
+# Kubernetes Node Preparation and Component Setup Role
+
+- name: Check if kubectl is available
+  command: kubectl version --client --output=yaml
+  register: kubectl_client_check
+  changed_when: false
+  failed_when: false
+
+- name: Display kubectl client version
+  debug:
+    msg: "kubectl client detected: {{ (kubectl_client_check.stdout | from_yaml).clientVersion.gitVersion | default('Installed') }}"
+  when: kubectl_client_check.rc == 0
+
+# Node Preparation for Remote Linux Nodes (Bare-Metal / VM)
+- name: Disable swap for Kubernetes compliance
+  command: swapoff -a
+  become: true
+  changed_when: false
+  when: not (is_local_deployment | default(false)) and ansible_os_family in ['Debian', 'RedHat']
+
+- name: Remove swap entry from /etc/fstab
+  replace:
+    path: /etc/fstab
+    regexp: '(^.*\s+swap\s+.*$)'
+    replace: '# \1'
+  become: true
+  when: not (is_local_deployment | default(false)) and ansible_os_family in ['Debian', 'RedHat']
+
+- name: Load required kernel modules (overlay, br_netfilter)
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ k8s_kernel_modules }}"
+  become: true
+  when: not (is_local_deployment | default(false)) and ansible_os_family in ['Debian', 'RedHat']
+
+- name: Persist kernel modules across reboots
+  copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+    mode: '0644'
+  become: true
+  when: not (is_local_deployment | default(false)) and ansible_os_family in ['Debian', 'RedHat']
+
+- name: Apply sysctl network bridge parameters for Kubernetes
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: true
+    sysctl_file: /etc/sysctl.d/k8s.conf
+  loop: "{{ k8s_sysctl_settings | dict2items }}"
+  become: true
+  when: not (is_local_deployment | default(false)) and ansible_os_family in ['Debian', 'RedHat']
+
+# Local Development / KIND / Minikube Cluster Verification
+- name: Check Kubernetes cluster connectivity
+  command: kubectl get nodes
+  register: k8s_nodes_check
+  changed_when: false
+  failed_when: false
+
+- name: Report Kubernetes cluster status
+  debug:
+    msg: "Kubernetes Cluster is reachable. Active nodes: \n{{ k8s_nodes_check.stdout }}"
+  when: k8s_nodes_check.rc == 0
+
+- name: Warning if cluster is not reachable
+  debug:
+    msg: "Cluster is not yet responding to kubectl. Run KIND or Minikube setup before deploying workloads."
+  when: k8s_nodes_check.rc != 0
+

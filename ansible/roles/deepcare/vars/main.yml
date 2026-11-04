@@ -1,0 +1,9 @@
+---
+deploy_timeout: 300s
+verification_timeout_seconds: 120
+expected_deployments:
+  - deepcare-postgres
+  - deepcare-localstack
+  - deepcare-backend
+  - deepcare-frontend
+

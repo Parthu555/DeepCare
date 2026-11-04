@@ -1,0 +1,45 @@
+---
+# DeepCare Global Ansible Configuration Variables
+app_name: deepcare
+app_namespace: deepcare
+app_version: "1.0.0"
+
+# Project Workspace Paths
+project_root_dir: "{{ playbook_dir }}/../.."
+manifests_base_dir: "{{ project_root_dir }}/kubernetes/base"
+manifests_overlay_dir: "{{ project_root_dir }}/kubernetes/overlays/local"
+
+# Container Images
+backend_image: "deepcare-backend:latest"
+frontend_image: "deepcare-frontend:latest"
+postgres_image: "postgres:15-alpine"
+localstack_image: "localstack/localstack:3.4.0"
+prometheus_image: "prom/prometheus:v2.51.0"
+grafana_image: "grafana/grafana:10.4.0"
+
+# Application Ports & NodePorts
+frontend_port: 80
+frontend_nodeport: 30080
+backend_port: 8000
+backend_nodeport: 30081
+postgres_port: 5432
+prometheus_port: 9090
+prometheus_nodeport: 30090
+grafana_port: 3000
+grafana_nodeport: 30030
+
+# Health Check Configurations
+health_endpoints:
+  backend_live: "/health/live"
+  backend_ready: "/health/ready"
+  frontend: "/"
+health_check_retries: 30
+health_check_delay: 5
+
+# Local KIND Multi-Node Cluster Configuration
+kind_cluster_name: "deepcare-cluster"
+kind_nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker
+

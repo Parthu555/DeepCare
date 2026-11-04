@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare
+    app.kubernetes.io/part-of: healthcare-system
+    deepcare.health/environment: production
+

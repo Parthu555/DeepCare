@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: postgres-pvc
+    app.kubernetes.io/part-of: deepcare
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: localstack-pvc
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: localstack-pvc
+    app.kubernetes.io/part-of: deepcare
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+

@@ -1,0 +1,89 @@
+---
+# DeepCare Application Deployment & Verification Role
+
+- name: Verify Kubernetes cluster accessibility
+  command: kubectl get nodes
+  register: k8s_check
+  changed_when: false
+
+- name: Ensure target namespace exists
+  command: kubectl create namespace {{ app_namespace }} --dry-run=client -o yaml
+  register: ns_manifest
+  changed_when: false
+
+- name: Apply namespace
+  command: kubectl apply -f -
+  args:
+    stdin: "{{ ns_manifest.stdout }}"
+  register: ns_apply
+  changed_when: "'created' in ns_apply.stdout"
+
+- name: Apply DeepCare Kubernetes manifests via Kustomize
+  command: kubectl apply -k {{ manifests_base_dir }}
+  register: kustomize_apply
+  changed_when: "'created' in kustomize_apply.stdout or 'configured' in kustomize_apply.stdout"
+
+- name: Wait for PostgreSQL deployment to complete
+  command: >
+    kubectl rollout status deployment/deepcare-postgres
+    -n {{ app_namespace }}
+    --timeout={{ deploy_timeout }}
+  register: pg_rollout
+  changed_when: false
+
+- name: Wait for LocalStack deployment to complete
+  command: >
+    kubectl rollout status deployment/deepcare-localstack
+    -n {{ app_namespace }}
+    --timeout={{ deploy_timeout }}
+  register: localstack_rollout
+  changed_when: false
+
+- name: Wait for DeepCare Backend rollout to complete
+  command: >
+    kubectl rollout status deployment/deepcare-backend
+    -n {{ app_namespace }}
+    --timeout={{ deploy_timeout }}
+  register: backend_rollout
+  changed_when: false
+
+- name: Wait for DeepCare Frontend rollout to complete
+  command: >
+    kubectl rollout status deployment/deepcare-frontend
+    -n {{ app_namespace }}
+    --timeout={{ deploy_timeout }}
+  register: frontend_rollout
+  changed_when: false
+
+- name: Retrieve active Pods in {{ app_namespace }}
+  command: kubectl get pods -n {{ app_namespace }} -o wide
+  register: pod_status
+  changed_when: false
+
+- name: Display Pod Status
+  debug:
+    var: pod_status.stdout_lines
+
+- name: Retrieve Active Services in {{ app_namespace }}
+  command: kubectl get svc -n {{ app_namespace }}
+  register: svc_status
+  changed_when: false
+
+- name: Display Service NodePorts
+  debug:
+    var: svc_status.stdout_lines
+
+- name: Final DeepCare Deployment Summary
+  debug:
+    msg:
+      - "=========================================================="
+      - " DeepCare Cloud-Native Application Deployed Successfully!  "
+      - "=========================================================="
+      - "Frontend UI:        http://localhost:{{ frontend_nodeport }}"
+      - "FastAPI Swagger:    http://localhost:{{ frontend_nodeport }}/docs"
+      - "Backend Liveness:   http://localhost:{{ frontend_nodeport }}/health/live"
+      - "Backend Readiness:  http://localhost:{{ frontend_nodeport }}/health/ready"
+      - "Prometheus Metrics: http://localhost:{{ prometheus_nodeport }}"
+      - "Grafana Dashboards: http://localhost:{{ grafana_nodeport }}"
+      - "=========================================================="
+

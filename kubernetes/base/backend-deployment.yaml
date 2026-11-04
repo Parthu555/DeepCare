@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepcare-backend
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-backend
+    app.kubernetes.io/component: api-backend
+    app.kubernetes.io/part-of: deepcare
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: deepcare-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: deepcare-backend
+        app.kubernetes.io/component: api-backend
+    spec:
+      containers:
+        - name: backend
+          image: deepcare-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: deepcare-config
+            - secretRef:
+                name: deepcare-secrets
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 4
+            failureThreshold: 3
+

@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepcare-postgres
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: deepcare
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    app.kubernetes.io/name: deepcare-postgres
+

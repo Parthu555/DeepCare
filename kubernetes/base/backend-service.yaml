@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepcare-backend
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-backend
+    app.kubernetes.io/component: api-backend
+    app.kubernetes.io/part-of: deepcare
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: deepcare-backend
+

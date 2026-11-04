@@ -1,0 +1,6 @@
+---
+- name: "DeepCare DevOps - Kubernetes Prerequisites & Node Preparation"
+  hosts: all
+  roles:
+    - kubernetes
+

@@ -1,0 +1,9 @@
+---
+- name: restart deepcare backend
+  command: kubectl rollout restart deployment deepcare-backend -n {{ app_namespace }}
+  changed_when: true
+
+- name: restart deepcare frontend
+  command: kubectl rollout restart deployment deepcare-frontend -n {{ app_namespace }}
+  changed_when: true
+

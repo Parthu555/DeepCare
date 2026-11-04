@@ -1,0 +1,37 @@
+---
+- name: "DeepCare DevOps - Kubernetes Multi-Node Configuration & Labeling"
+  hosts: all
+  tasks:
+    - name: Fetch available Kubernetes nodes
+      command: kubectl get nodes -o json
+      register: nodes_json_raw
+      changed_when: false
+
+    - name: Parse node names
+      set_fact:
+        cluster_nodes: "{{ (nodes_json_raw.stdout | from_json).items | map(attribute='metadata.name') | list }}"
+
+    - name: Display detected cluster nodes
+      debug:
+        msg: "Detected cluster nodes: {{ cluster_nodes }}"
+
+    - name: Label worker nodes for DeepCare specialized workloads
+      command: >
+        kubectl label node {{ item }}
+        deepcare.health/tier=app
+        --overwrite
+      loop: "{{ cluster_nodes }}"
+      when: cluster_nodes | length > 0
+      changed_when: false
+      failed_when: false
+
+    - name: Verify storage classes on Kubernetes cluster
+      command: kubectl get storageclass
+      register: sc_check
+      changed_when: false
+      failed_when: false
+
+    - name: Report StorageClass status
+      debug:
+        msg: "StorageClass detected: \n{{ sc_check.stdout if sc_check.rc == 0 else 'No standard StorageClass found. Local PVCs will use hostPath/standard.' }}"
+

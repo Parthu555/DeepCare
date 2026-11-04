@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deepcare-config
+  namespace: deepcare
+  labels:
+    app.kubernetes.io/name: deepcare-config
+    app.kubernetes.io/part-of: deepcare
+data:
+  PROJECT_NAME: "DeepCare Medical Imaging System"
+  ENVIRONMENT: "kubernetes"
+  API_V1_STR: "/api/v1"
+  POSTGRES_SERVER: "deepcare-postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "deepcare"
+  S3_ENDPOINT_URL: "http://deepcare-localstack:4566"
+  S3_BUCKET_NAME: "deepcare-medical-records"
+  AWS_DEFAULT_REGION: "us-east-1"
+  ML_MODEL_NAME: "densenet121"
+  ENABLE_CLOUDWATCH_METRICS: "false"
+  PROMETHEUS_METRICS_ENABLED: "true"
+  LOCAL_STORAGE_DIR: "/app/storage"
+

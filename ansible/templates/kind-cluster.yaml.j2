@@ -1,0 +1,38 @@
+# KIND Multi-Node Cluster Configuration
+# 1 Control-Plane Node + 2 Worker Nodes for DeepCare Cloud-Native Architecture
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: {{ kind_cluster_name }}
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.29.2
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # DeepCare Frontend NodePort
+      - containerPort: {{ frontend_nodeport }}
+        hostPort: {{ frontend_nodeport }}
+        protocol: TCP
+      # Prometheus Monitoring NodePort
+      - containerPort: {{ prometheus_nodeport }}
+        hostPort: {{ prometheus_nodeport }}
+        protocol: TCP
+      # Grafana Dashboard NodePort
+      - containerPort: {{ grafana_nodeport }}
+        hostPort: {{ grafana_nodeport }}
+        protocol: TCP
+  - role: worker
+    image: kindest/node:v1.29.2
+    labels:
+      node-role.kubernetes.io/worker: worker-1
+      deepcare.health/workload: backend-ai
+  - role: worker
+    image: kindest/node:v1.29.2
+    labels:
+      node-role.kubernetes.io/worker: worker-2
+      deepcare.health/workload: database-storage
+

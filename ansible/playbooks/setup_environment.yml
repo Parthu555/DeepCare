@@ -1,0 +1,57 @@
+---
+- name: "DeepCare DevOps - Environment Prerequisites & Node Readiness"
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Display Operating System and Architecture
+      debug:
+        msg:
+          - "Host: {{ inventory_hostname }}"
+          - "OS Family: {{ ansible_os_family | default('Windows/Local') }}"
+          - "Architecture: {{ ansible_architecture | default('x86_64') }}"
+          - "Environment Type: {{ environment_type }}"
+
+    - name: Check available system memory
+      debug:
+        msg: "Total Memory: {{ (ansible_memtotal_mb | default(8192)) }} MB"
+
+    - name: Verify Docker CLI presence
+      command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: false
+
+    - name: Report Docker CLI status
+      debug:
+        msg: "Docker status: {{ docker_check.stdout if docker_check.rc == 0 else 'NOT FOUND' }}"
+
+    - name: Verify Kubectl CLI presence
+      command: kubectl version --client --output=yaml
+      register: kubectl_check
+      changed_when: false
+      failed_when: false
+
+    - name: Report Kubectl CLI status
+      debug:
+        msg: "Kubectl client: {{ (kubectl_check.stdout | from_yaml).clientVersion.gitVersion if kubectl_check.rc == 0 else 'NOT FOUND' }}"
+
+    - name: Check for Kubernetes Cluster availability
+      command: kubectl cluster-info
+      register: cluster_check
+      changed_when: false
+      failed_when: false
+
+    - name: Report Kubernetes Cluster connectivity
+      debug:
+        msg: "Kubernetes control plane: {{ 'ONLINE' if cluster_check.rc == 0 else 'OFFLINE (Start KIND, Minikube, or Docker Desktop)' }}"
+
+    - name: Create required local configuration directories if missing
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ project_root_dir }}/kubernetes/storage"
+        - "{{ project_root_dir }}/kubernetes/overlays/local"
+      when: is_local_deployment | default(false)
+

@@ -1,0 +1,6 @@
+---
+k8s_apt_key_url: "https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key"
+k8s_apt_repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /"
+flannel_manifest_url: "https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml"
+kind_binary_url: "https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64"
+

@@ -1,0 +1,45 @@
+# Multi-Node Kubernetes Cluster Configuration using KIND (Kubernetes in Docker)
+# Architecture: 1 Control-Plane Node + 2 Worker Nodes
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: deepcare-cluster
+nodes:
+  # Master / Control-Plane Node
+  - role: control-plane
+    image: kindest/node:v1.29.2
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # DeepCare Web Application (NodePort 30080 -> Host 30080)
+      - containerPort: 30080
+        hostPort: 30080
+        protocol: TCP
+      # Prometheus Monitoring (NodePort 30090 -> Host 30090)
+      - containerPort: 30090
+        hostPort: 30090
+        protocol: TCP
+      # Grafana Dashboards (NodePort 30030 -> Host 30030)
+      - containerPort: 30030
+        hostPort: 30030
+        protocol: TCP
+
+  # Worker Node 1: Dedicated to Application Workloads (Frontend & Backend AI Engine)
+  - role: worker
+    image: kindest/node:v1.29.2
+    labels:
+      node-role.kubernetes.io/worker: worker-1
+      deepcare.health/workload: backend-ai
+      topology.kubernetes.io/zone: zone-a
+
+  # Worker Node 2: Dedicated to Stateful Services (PostgreSQL & Medical Vault S3)
+  - role: worker
+    image: kindest/node:v1.29.2
+    labels:
+      node-role.kubernetes.io/worker: worker-2
+      deepcare.health/workload: database-storage
+      topology.kubernetes.io/zone: zone-b
+
